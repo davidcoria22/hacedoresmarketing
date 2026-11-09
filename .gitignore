@@ -1,0 +1,17 @@
+# Solo se publica el panel y los agentes (sin secretos)
+/*
+!/api
+!/app-agentes
+!/agentes
+!/vercel.json
+!/README.md
+!/.gitignore
+
+# Secretos y datos privados: NUNCA subir
+.env
+*.env
+credenciales*
+google-service-account.json
+*service-account*.json
+node_modules/
+ajustes.json

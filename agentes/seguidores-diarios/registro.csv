@@ -1,0 +1,6 @@
+fecha,resultado,redes_ok,redes_con_error,nota
+5/11/2026,OK,youtube;facebook;instagram;tiktok,,X pendiente manual
+6/11/2026,ERROR,youtube;tiktok,facebook;instagram,X pendiente manual
+6/11/2026,OK,instagram;facebook;youtube,,actualizado 10:24 desde el panel
+9/11/2026,OK,youtube;facebook;instagram;tiktok,,X pendiente manual
+9/11/2026,OK,,,fila de hoy ya existia (fila 465); no se agrego otra; X pendiente manual

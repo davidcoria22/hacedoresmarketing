@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agentes · Hacedores</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Barra superior: logo a la izquierda, agentes y ejecuciones a la derecha del todo -->
+  <header class="barra-top">
+    <div class="saludo">
+      <h1>¡Hola, Hacedores!</h1>
+      <p>Echemos un vistazo a tus agentes hoy</p>
+    </div>
+    <button class="btn-dash" id="btn-dash" title="Agentes y ejecuciones" aria-label="Agentes y ejecuciones">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 17 L9 11 L13 15 L21 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 3 V21 H21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+  </header>
+
+  <!-- Oficina al centro -->
+  <main class="escena-principal">
+    <div id="oficina" class="oficina"></div>
+    <p class="pie-escena" id="estado-chat"></p>
+  </main>
+
+  <!-- Panel derecho fijo: gráfica arriba, redes abajo -->
+  <aside class="panel-derecho" aria-label="Seguidores">
+    <div class="tarjeta-post">
+      <div class="iconos-posts" id="iconos-posts"></div>
+      <div id="post-ultimo" class="post-ultimo"></div>
+    </div>
+    <div class="tarjeta-grafica">
+      <div class="titulo-tarjeta">
+        <h3 id="titulo-grafica">Seguidores · Instagram</h3>
+        <span class="neu" style="font-size:11px">últimos 60 días</span>
+      </div>
+      <div id="grafica" class="grafica"></div>
+    </div>
+    <div class="tarjeta-panel">
+      <div class="titulo-tarjeta"><h3>Redes</h3><span class="neu" style="font-size:11px">seguidores hoy</span></div>
+      <div class="lista-redes" id="lista-redes"></div>
+    </div>
+  </aside>
+
+  <!-- Panel izquierdo fijo: agentes -->
+  <aside class="panel-izquierdo" aria-label="Agentes">
+    <div class="tarjeta-panel">
+      <div class="titulo-tarjeta"><h3>Agentes</h3><span class="neu" style="font-size:11px">toca para hablar</span></div>
+      <div id="lista-agentes-panel" class="lista-agentes"></div>
+    </div>
+  </aside>
+
+  <!-- Cajón: agentes y ejecuciones -->
+  <section class="cajon" id="cajon-dash" aria-label="Agentes y ejecuciones">
+    <div class="cajon-cab">
+      <h2>Agentes y ejecuciones</h2>
+      <button class="cerrar" data-cerrar="cajon-dash" aria-label="Cerrar">×</button>
+    </div>
+    <div class="cajon-cuerpo">
+      <div class="bloque">
+        <h3>Agentes</h3>
+        <div id="lista-agentes-mini"></div>
+      </div>
+      <div class="bloque">
+        <h3>Últimas ejecuciones</h3>
+        <div id="registro"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Chat lateral -->
+  <section class="cajon" id="cajon-chat" aria-label="Chat con agente">
+    <div class="cajon-cab">
+      <h2 id="chat-cabecera">Chat</h2>
+      <button class="cerrar" data-cerrar="cajon-chat" aria-label="Cerrar">×</button>
+    </div>
+    <div class="chat-cuerpo">
+      <div class="mensajes" id="mensajes"></div>
+      <div class="acciones" id="acciones" hidden></div>
+      <form id="formulario" class="formulario">
+        <input id="entrada" type="text" placeholder="Escribe tu pregunta…" autocomplete="off">
+        <button type="submit">Enviar</button>
+      </form>
+    </div>
+  </section>
+
+  <div class="velo" id="velo"></div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script src="oficina.js"></script>
+  <script type="module" src="escena3d.js?v=plano13"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+{
+  "outputDirectory": "app-agentes/public",
+  "functions": {
+    "api/index.js": { "includeFiles": "agentes/**" }
+  },
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/index" }
+  ]
+}
