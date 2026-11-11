@@ -242,6 +242,25 @@ async function actualizarHoy() {
 }
 
 // ---------- agentes ----------
+// Acepta 2026-11-11 o 11/11/2026 y devuelve siempre d/m/aaaa (sin ceros a la izquierda)
+function fechaDiaMes(t) {
+  t = String(t || '').trim();
+  const [a, b, c] = t.split(/[-\/T ]/);
+  if (/^\d{4}$/.test(a) && b && c) return Number(c) + '/' + Number(b) + '/' + a;      // 2026-11-11
+  if (/^\d{1,2}$/.test(a) && /^\d{1,2}$/.test(b) && /^\d{4}$/.test(c)) return Number(a) + '/' + Number(b) + '/' + c;   // 11/11/2026
+  return t;
+}
+const fechaMexico = d => new Intl.DateTimeFormat('es-MX', { timeZone: 'America/Mexico_City', day: 'numeric', month: 'numeric', year: 'numeric' }).format(d);
+// Qué agentes trabajaron hoy según la hoja de Google (sirve también en línea, donde el registro del repositorio no se actualiza solo)
+let cacheActividad = { t: 0, v: {} };
+async function actividadHoy() {
+  if (Date.now() - cacheActividad.t < 2 * 60 * 1000) return cacheActividad.v;
+  const v = {};
+  try { const { datos } = await leerHoja(); const u = datos[datos.length - 1]; if (u) v['seguidores-diarios'] = fechaDiaMes(u.fechaTexto); } catch { /* sin acceso a la hoja */ }
+  try { const m = (await require('./mensajes.js').leerMensajes(1))[0]; if (m) v['whatsapp'] = fechaMexico(new Date(m.fecha)); } catch { /* sin pestaña de mensajes */ }
+  cacheActividad = { t: Date.now(), v };
+  return v;
+}
 function listarAgentes() {
   if (!fs.existsSync(AGENTES)) return [];
   return fs.readdirSync(AGENTES, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => {
@@ -252,6 +271,7 @@ function listarAgentes() {
     const horario = (config.match(/Hora:\s*(.+)/) || [null, 'Sin horario'])[1];
     const registro = leerCSV(path.join(dir, 'registro.csv'));
     const ultimo = registro[registro.length - 1] || null;
+    if (ultimo) ultimo.fecha = fechaDiaMes(ultimo.fecha);
     const aj = leerAjustes()[d.name] || {};
     return {
       id: d.name, nombre: aj.nombre || titulo, nombreOriginal: titulo, horario, ultimo,
@@ -339,7 +359,11 @@ const manejar = async (req, res) => {
     }
     const usaIA = !MODO_PUBLICO && !!process.env.ANTHROPIC_API_KEY;   // en línea nunca se gasta la clave de IA
     if (req.method === 'GET' && url.pathname === '/api/agentes') {
-      const agentes = listarAgentes().map(({ instrucciones, ...resto }) => resto);
+      const act = await actividadHoy(), hoy = fechaMexico(new Date());
+      const agentes = listarAgentes().map(({ instrucciones, ...resto }) => {
+        if (act[resto.id] === hoy && (!resto.ultimo || resto.ultimo.fecha !== hoy)) resto.ultimo = { ...(resto.ultimo || {}), fecha: hoy, resultado: 'OK', nota: 'actividad de hoy en la hoja' };
+        return resto;
+      });
       return enviarJSON(res, 200, { agentes, chatActivo: usaIA, modoPublico: MODO_PUBLICO });
     }
     if (req.method === 'POST' && url.pathname === '/api/ajustes') {
