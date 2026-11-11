@@ -48,16 +48,36 @@ async function manejarWhatsApp(req, res, url) {
     console.error('whatsapp: firma invalida (cuerpo=' + crudo.length + ' bytes, secreto configurado=' + !!process.env.WHATSAPP_APP_SECRET + ', cabecera=' + !!req.headers['x-hub-signature-256'] + ')');
     return fin(403, 'Firma inválida'), true;
   }
-  if (!process.env.WHATSAPP_TOKEN || !process.env.WHATSAPP_PHONE_ID) return fin(200), true;
 
   let datos; try { datos = JSON.parse(crudo.toString('utf8')); } catch { return fin(200), true; }
   const texto = fs.readFileSync(MENSAJE, 'utf8').trim();
-  const destinos = new Set();
-  for (const e of datos.entry || []) for (const c of e.changes || []) for (const m of c.value?.messages || []) {
-    if (m.referral && m.from) destinos.add(m.from);   // solo mensajes que vienen del anuncio
+  const puedeEnviar = !!(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID);
+  const registros = [];
+  const contestados = new Set();   // un solo mensaje por persona en cada aviso de Meta
+  for (const e of datos.entry || []) for (const c of e.changes || []) {
+    const nombres = {};
+    for (const k of c.value?.contacts || []) nombres[k.wa_id] = k.profile?.name || '';
+    for (const m of c.value?.messages || []) {
+      const delAnuncio = !!(m.referral && m.from);   // solo contesta a quien llega desde el anuncio
+      let respuesta = 'ninguna';
+      if (delAnuncio && !contestados.has(m.from)) {
+        contestados.add(m.from);
+        if (!puedeEnviar) respuesta = 'sin credenciales';
+        else {
+          try { await enviarTexto(m.from, texto); respuesta = 'enviada'; }
+          catch (err) { respuesta = 'error'; console.error('whatsapp:', err.message); }
+        }
+      }
+      registros.push({
+        red: 'whatsapp', nombre: nombres[m.from] || '', numero: m.from || '', tipo: m.type || '',
+        texto: m.text?.body || m.button?.text || m.interactive?.button_reply?.title || m.interactive?.list_reply?.title || '',
+        origen: delAnuncio ? 'anuncio' : 'directo', respuesta
+      });
+    }
   }
-  for (const n of destinos) {
-    try { await enviarTexto(n, texto); } catch (e) { console.error('whatsapp:', e.message); }
+  if (registros.length) {
+    try { await require('./mensajes.js').guardarMensajes(registros); }
+    catch (err) { console.error('mensajes: no se pudo guardar:', err.message); }
   }
   return fin(200, 'ok'), true;
 }

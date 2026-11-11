@@ -314,6 +314,29 @@ const manejar = async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   try {
     if (await require('./whatsapp.js').manejarWhatsApp(req, res, url)) return;
+    // ---- contraseña y mensajes de clientes (sección privada) ----
+    const auth = require('./auth.js');
+    const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+    const https_ = (req.headers['x-forwarded-proto'] || '') === 'https';
+    if (req.method === 'POST' && url.pathname === '/api/login') {
+      if (!MODO_PUBLICO) return enviarJSON(res, 200, { ok: true, local: true });
+      if (!auth.configurada()) return enviarJSON(res, 503, { error: 'La contraseña del panel todavía no está configurada.' });
+      if (auth.bloqueado(ip)) return enviarJSON(res, 429, { error: 'Demasiados intentos. Espera un minuto.' });
+      const { password } = await leerCuerpo(req);
+      if (!auth.passwordCorrecta(password)) { auth.anotarFallo(ip); return enviarJSON(res, 401, { error: 'Contraseña incorrecta.' }); }
+      res.setHeader('Set-Cookie', auth.cookieSesion(https_));
+      return enviarJSON(res, 200, { ok: true });
+    }
+    if (req.method === 'POST' && url.pathname === '/api/logout') {
+      res.setHeader('Set-Cookie', auth.cookieBorrar(https_));
+      return enviarJSON(res, 200, { ok: true });
+    }
+    if (req.method === 'GET' && url.pathname === '/api/mensajes') {
+      if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, configurada: auth.configurada() });
+      const red = url.searchParams.get('red') || '';
+      try { return enviarJSON(res, 200, { mensajes: await require('./mensajes.js').leerMensajes(60, red) }); }
+      catch (e) { return enviarJSON(res, 502, { error: 'No se pudieron leer los mensajes: ' + e.message }); }
+    }
     const usaIA = !MODO_PUBLICO && !!process.env.ANTHROPIC_API_KEY;   // en línea nunca se gasta la clave de IA
     if (req.method === 'GET' && url.pathname === '/api/agentes') {
       const agentes = listarAgentes().map(({ instrucciones, ...resto }) => resto);
@@ -377,5 +400,6 @@ const manejar = async (req, res) => {
     enviarJSON(res, 500, { error: e.message });
   }
 };
+manejar.ayudas = { tokenGoogle, petición, SHEET_ID };   // lo usa mensajes.js
 module.exports = manejar;   // lo usa api/index.js en Vercel
 if (require.main === module) http.createServer(manejar).listen(PORT, () => console.log('Panel de agentes en http://localhost:' + PORT));

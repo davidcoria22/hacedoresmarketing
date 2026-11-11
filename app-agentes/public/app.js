@@ -406,5 +406,55 @@ $('#formulario').addEventListener('submit', async e => {
   pintarMensajes();
 });
 
+// ---------- Mensajes de Meta (sección privada: en línea pide contraseña) ----------
+const CANALES_MSG = [{ id: '', nombre: 'Todos' }, { id: 'whatsapp', nombre: 'WhatsApp' }, { id: 'facebook', nombre: 'Facebook', pronto: true }, { id: 'instagram', nombre: 'Instagram', pronto: true }];
+let canalMsg = '';
+let temporizadorMsg = null;
+function pintarChipsMsg() {
+  $('#chips-msg').innerHTML = CANALES_MSG.map(c =>
+    `<button class="chip-msg ${c.id === canalMsg ? 'activo' : ''}" data-canal="${c.id}" ${c.pronto ? 'disabled title="Falta conectar los permisos de Meta"' : ''}>${c.nombre}${c.pronto ? ' · pronto' : ''}</button>`).join('');
+  $('#chips-msg').querySelectorAll('button:not([disabled])').forEach(b => b.addEventListener('click', () => { canalMsg = b.dataset.canal; pintarChipsMsg(); cargarMensajes(); }));
+}
+function formularioClave(texto) {
+  $('#lista-msg').innerHTML = `<form class="clave-msg" id="form-clave"><p>${esc(texto)}</p>
+    <input type="password" id="clave-msg" placeholder="Contraseña" autocomplete="current-password" required>
+    <button type="submit">Entrar</button><span class="error-msg" id="error-clave"></span></form>`;
+  $('#form-clave').addEventListener('submit', async e => {
+    e.preventDefault();
+    try {
+      const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: $('#clave-msg').value }) });
+      const j = await r.json();
+      if (!r.ok) { $('#error-clave').textContent = j.error || 'No se pudo entrar'; return; }
+      cargarMensajes();
+    } catch { $('#error-clave').textContent = 'Sin conexión con el servidor'; }
+  });
+}
+function pintarMensajes2(lista) {
+  if (!lista.length) { $('#lista-msg').innerHTML = '<div class="vacio-msg">Todavía no ha llegado ningún mensaje.</div>'; return; }
+  const ETQ = { enviada: ['Respuesta enviada', 'ok'], error: ['Error al responder', 'mal'], 'sin credenciales': ['Faltan credenciales', 'mal'] };
+  $('#lista-msg').innerHTML = lista.map(m => {
+    const e = ETQ[m.respuesta];
+    return `<div class="msg-item"><div class="msg-cab"><b>${esc(m.nombre || m.telefono || 'Sin nombre')}</b><span>${esc(hace(m.fecha))}</span></div>
+      ${m.nombre && m.telefono ? `<div class="msg-tel">${esc(m.telefono)}</div>` : ''}
+      <div class="msg-texto">${esc(m.texto || '[' + (m.tipo || 'mensaje') + ']')}</div>
+      <div class="msg-pie"><span class="msg-red">${esc(m.red)}</span>${m.origen === 'anuncio' ? '<span class="msg-etq">Anuncio</span>' : ''}${e ? `<span class="msg-etq ${e[1]}">${e[0]}</span>` : ''}</div></div>`;
+  }).join('');
+}
+async function cargarMensajes() {
+  try {
+    const r = await fetch('/api/mensajes' + (canalMsg ? '?red=' + canalMsg : ''));
+    const j = await r.json();
+    $('#salir-msg').hidden = !(r.ok && modoPublico);
+    if (r.status === 401) { formularioClave(j.configurada === false ? 'La contraseña del panel todavía no está configurada.' : 'Escribe la contraseña para ver los mensajes.'); return; }
+    if (!r.ok) { $('#lista-msg').innerHTML = `<div class="vacio-msg">${esc(j.error || 'No se pudieron cargar')}</div>`; return; }
+    pintarMensajes2(j.mensajes || []);
+  } catch { $('#lista-msg').innerHTML = '<div class="vacio-msg">Sin conexión con el servidor.</div>'; }
+}
+$('#salir-msg').addEventListener('click', async () => { await fetch('/api/logout', { method: 'POST' }); cargarMensajes(); });
+$('#actualizar-msg').addEventListener('click', cargarMensajes);
+pintarChipsMsg();
+cargarMensajes();
+temporizadorMsg = setInterval(() => { if (!document.hidden && !document.querySelector('#clave-msg')) cargarMensajes(); }, 30000);
+
 cargar();
 setInterval(cargar, 5 * 60 * 1000);
