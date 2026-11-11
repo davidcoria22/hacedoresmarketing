@@ -313,6 +313,7 @@ const TIPOS = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=
 const manejar = async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   try {
+    if (await require('./whatsapp.js').manejarWhatsApp(req, res, url)) return;
     const usaIA = !MODO_PUBLICO && !!process.env.ANTHROPIC_API_KEY;   // en línea nunca se gasta la clave de IA
     if (req.method === 'GET' && url.pathname === '/api/agentes') {
       const agentes = listarAgentes().map(({ instrucciones, ...resto }) => resto);
