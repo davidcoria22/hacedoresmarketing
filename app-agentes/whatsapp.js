@@ -44,7 +44,10 @@ async function manejarWhatsApp(req, res, url) {
   if (req.method !== 'POST') return fin(405), true;
 
   const crudo = await leerCrudo(req);
-  if (!firmaValida(crudo, req.headers['x-hub-signature-256'], process.env.WHATSAPP_APP_SECRET)) return fin(403, 'Firma inválida'), true;
+  if (!firmaValida(crudo, req.headers['x-hub-signature-256'], process.env.WHATSAPP_APP_SECRET)) {
+    console.error('whatsapp: firma invalida (cuerpo=' + crudo.length + ' bytes, secreto configurado=' + !!process.env.WHATSAPP_APP_SECRET + ', cabecera=' + !!req.headers['x-hub-signature-256'] + ')');
+    return fin(403, 'Firma inválida'), true;
+  }
   if (!process.env.WHATSAPP_TOKEN || !process.env.WHATSAPP_PHONE_ID) return fin(200), true;
 
   let datos; try { datos = JSON.parse(crudo.toString('utf8')); } catch { return fin(200), true; }
