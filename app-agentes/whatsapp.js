@@ -32,8 +32,22 @@ async function enviarTexto(para, texto) {
 
 // Devuelve true si atendió la ruta.
 async function manejarWhatsApp(req, res, url) {
-  if (url.pathname !== '/api/whatsapp') return false;
   const fin = (c, t) => { res.writeHead(c, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end(t || ''); };
+
+  // Reloj externo (cron-job.org): envía los mensajes diferidos que ya vencieron
+  if (url.pathname === '/api/whatsapp-pendientes') {
+    const clave = process.env.WHATSAPP_CRON_SECRET || '';
+    const recibida = String(req.headers['x-cron-key'] || '');
+    const a = Buffer.from(clave), b = Buffer.from(recibida);
+    if (!clave || a.length !== b.length || !crypto.timingSafeEqual(a, b)) return fin(403, 'No autorizado'), true;
+    if (!process.env.WHATSAPP_TOKEN || !process.env.WHATSAPP_PHONE_ID) return fin(500, 'Faltan credenciales de WhatsApp'), true;
+    try {
+      const texto = fs.readFileSync(MENSAJE, 'utf8').trim();
+      const r = await require('./pendientes.js').procesar(n => enviarTexto(n, texto));
+      return fin(200, JSON.stringify(r)), true;
+    } catch (e) { console.error('whatsapp-pendientes:', e.message); return fin(500, 'Error: ' + e.message), true; }
+  }
+  if (url.pathname !== '/api/whatsapp') return false;
 
   // Verificación inicial que hace Meta al registrar el webhook
   if (req.method === 'GET') {
@@ -54,6 +68,8 @@ async function manejarWhatsApp(req, res, url) {
   const puedeEnviar = !!(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID);
   const registros = [];
   const contestados = new Set();   // un solo mensaje por persona en cada aviso de Meta
+  const retraso = (process.env.WHATSAPP_RETRASO_MIN !== undefined && Number(process.env.WHATSAPP_RETRASO_MIN) >= 0 ? Number(process.env.WHATSAPP_RETRASO_MIN) : 5) * 60000;
+  const cola = [];
   for (const e of datos.entry || []) for (const c of e.changes || []) {
     const nombres = {};
     for (const k of c.value?.contacts || []) nombres[k.wa_id] = k.profile?.name || '';
@@ -63,16 +79,24 @@ async function manejarWhatsApp(req, res, url) {
       if (delAnuncio && !contestados.has(m.from)) {
         contestados.add(m.from);
         if (!puedeEnviar) respuesta = 'sin credenciales';
+        else if (retraso > 0 && process.env.WHATSAPP_CRON_SECRET) { cola.push({ id: m.id, numero: m.from, vence: Date.now() + retraso }); respuesta = 'programada'; }
         else {
           try { await enviarTexto(m.from, texto); respuesta = 'enviada'; }
           catch (err) { respuesta = 'error'; console.error('whatsapp:', err.message); }
         }
       }
       registros.push({
-        red: 'whatsapp', nombre: nombres[m.from] || '', numero: m.from || '', tipo: m.type || '',
+        id: m.id || '', red: 'whatsapp', nombre: nombres[m.from] || '', numero: m.from || '', tipo: m.type || '',
         texto: m.text?.body || m.button?.text || m.interactive?.button_reply?.title || m.interactive?.list_reply?.title || '',
         origen: delAnuncio ? 'anuncio' : 'directo', respuesta
       });
+    }
+  }
+  if (cola.length) {
+    try { await require('./pendientes.js').agregar(cola); }
+    catch (err) {
+      console.error('pendientes: no se pudo programar:', err.message);
+      for (const r of registros) if (r.respuesta === 'programada') r.respuesta = 'error';
     }
   }
   if (registros.length) {

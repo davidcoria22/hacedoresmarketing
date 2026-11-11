@@ -443,7 +443,7 @@ function formularioClave(texto) {
 }
 function pintarMensajes2(lista) {
   if (!lista.length) { $('#lista-msg').innerHTML = '<div class="vacio-msg">Todavía no ha llegado ningún mensaje.</div>'; return; }
-  const ETQ = { enviada: ['Respuesta enviada', 'ok'], error: ['Error al responder', 'mal'], 'sin credenciales': ['Faltan credenciales', 'mal'] };
+  const ETQ = { programada: ['Respuesta programada', ''], enviada: ['Respuesta enviada', 'ok'], error: ['Error al responder', 'mal'], 'sin credenciales': ['Faltan credenciales', 'mal'] };
   $('#lista-msg').innerHTML = lista.map(m => {
     const e = ETQ[m.respuesta];
     return `<div class="msg-item"><div class="msg-cab"><b>${esc(m.nombre || m.telefono || 'Sin nombre')}</b><span>${esc(hace(m.fecha))}</span></div>
