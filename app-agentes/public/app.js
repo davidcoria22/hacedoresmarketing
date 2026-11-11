@@ -10,7 +10,7 @@ let redActiva = 'instagram';
 let agentes = [];
 let agenteActivo = null;
 let oficinaIniciada = false;
-let modoPublico = false;   // en línea: solo lectura (sin engrane ni escribir en la hoja)
+let modoPublico = false;   // en línea: el engrane pide la contraseña del panel y no se puede escribir en la hoja de seguidores
 const historiales = {};
 
 const $ = s => document.querySelector(s);
@@ -102,7 +102,7 @@ function pintarAgentesPanel() {
         <span class="ag-estado ${t ? 'on' : ''}"><i></i>${t ? 'Trabajando' : 'Descansando'}</span>
       </span>
       <span class="ag-chat">Hablar</span>
-      ${modoPublico ? '' : `<button class="ag-engrane" data-ajustes="${a.id}" title="Ajustes del agente" aria-label="Ajustes de ${esc(a.nombre)}">
+      ${`<button class="ag-engrane" data-ajustes="${a.id}" title="Ajustes del agente" aria-label="Ajustes de ${esc(a.nombre)}">
         <svg viewBox="0 0 24 24" width="17" height="17"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM19.4 13.5a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V19a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H5a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3h0a1.6 1.6 0 0 0 1-1.5V5a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v0a1.6 1.6 0 0 0 1.5 1H19a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
       </button>`}
     </div>`;
@@ -132,6 +132,8 @@ function abrirAjustes(id) {
       <div class="paleta">${PALETA.map(c => `<label class="color"><input type="radio" name="color" value="${c}" ${c.toLowerCase() === actual.toLowerCase() ? 'checked' : ''}><i style="background:${c}"></i></label>`).join('')}</div>
     </div>
     <label>Notas para el chat <small>(se suman a sus instrucciones cuando hablas con él)</small><textarea name="notas" rows="4" maxlength="1000" placeholder="Ej. Responde siempre con emojis">${esc(a.notas)}</textarea></label>
+    ${modoPublico ? '<label>Contraseña del panel <small>(necesaria para guardar en línea)</small><input type="password" name="clave" autocomplete="current-password"></label>' : ''}
+    <span class="error-msg" data-aviso></span>
     <p class="nota-aj">Horario actual: ${esc(a.horario)} (se cambia en la tarea programada).</p>
     <div class="botones-aj"><button type="button" class="sec" data-restablecer>Restablecer</button><span style="flex:1"></span><button type="button" class="sec" data-cancelar>Cancelar</button><button type="submit">Guardar</button></div>
   </form>`;
@@ -139,8 +141,18 @@ function abrirAjustes(id) {
   const cerrar = () => m.remove();
   m.addEventListener('mousedown', e => { if (e.target === m) cerrar(); });
   m.querySelector('[data-cancelar]').addEventListener('click', cerrar);
+  const aviso = t => { m.querySelector('[data-aviso]').textContent = t; };
   const guardar = async cfg => {
-    await fetch('/api/ajustes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agente: id, ...cfg }) });
+    const clave = m.querySelector('input[name=clave]')?.value;
+    const enviar = () => fetch('/api/ajustes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ agente: id, ...cfg }) });
+    let r = await enviar();
+    if (r.status === 401 && modoPublico) {   // en línea hace falta iniciar sesión con la contraseña del panel
+      if (!clave) { aviso('Escribe la contraseña del panel para guardar.'); return; }
+      const l = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: clave }) });
+      if (!l.ok) { aviso((await l.json()).error || 'Contraseña incorrecta.'); return; }
+      r = await enviar();
+    }
+    if (!r.ok) { aviso((await r.json().catch(() => ({}))).error || 'No se pudo guardar.'); return; }
     cerrar();
     const ag = await fetch('/api/agentes').then(r => r.json());
     agentes = ag.agentes;

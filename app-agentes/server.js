@@ -282,9 +282,18 @@ function listarAgentes() {
 }
 // Ajustes sencillos por agente (nombre, rol, color, notas), guardados en app-agentes/ajustes.json
 const ARCHIVO_AJUSTES = path.join(__dirname, 'ajustes.json');
-function leerAjustes() { try { return JSON.parse(fs.readFileSync(ARCHIVO_AJUSTES, 'utf8')); } catch { return {}; } }
-function guardarAjustes(id, c) {
-  const todos = leerAjustes();
+let ajustesNube = { t: 0, v: {} };   // en línea: copia de la pestaña "Ajustes" de la hoja
+async function refrescarAjustesNube(forzar) {
+  if (!MODO_PUBLICO) return;
+  if (!forzar && Date.now() - ajustesNube.t < 60 * 1000) return;
+  try { ajustesNube = { t: Date.now(), v: await require('./ajustes-nube.js').leerTodos() }; } catch { ajustesNube.t = Date.now(); }
+}
+function leerAjustes() {
+  if (MODO_PUBLICO) return ajustesNube.v;
+  try { return JSON.parse(fs.readFileSync(ARCHIVO_AJUSTES, 'utf8')); } catch { return {}; }
+}
+async function guardarAjustes(id, c) {
+  const todos = { ...leerAjustes() };
   const limpio = t => String(t || '').trim();
   todos[id] = {
     nombre: limpio(c.nombre).slice(0, 40),
@@ -292,6 +301,7 @@ function guardarAjustes(id, c) {
     color: /^#[0-9a-fA-F]{6}$/.test(c.color) ? c.color : '',
     notas: limpio(c.notas).slice(0, 1000),
   };
+  if (MODO_PUBLICO) { await require('./ajustes-nube.js').guardar(id, todos[id]); ajustesNube = { t: Date.now(), v: todos }; return; }
   fs.writeFileSync(ARCHIVO_AJUSTES, JSON.stringify(todos, null, 2));
 }
 
@@ -359,6 +369,7 @@ const manejar = async (req, res) => {
     }
     const usaIA = !MODO_PUBLICO && !!process.env.ANTHROPIC_API_KEY;   // en línea nunca se gasta la clave de IA
     if (req.method === 'GET' && url.pathname === '/api/agentes') {
+      await refrescarAjustesNube();
       const act = await actividadHoy(), hoy = fechaMexico(new Date());
       const agentes = listarAgentes().map(({ instrucciones, ...resto }) => {
         if (act[resto.id] === hoy && (!resto.ultimo || resto.ultimo.fecha !== hoy)) resto.ultimo = { ...(resto.ultimo || {}), fecha: hoy, resultado: 'OK', nota: 'actividad de hoy en la hoja' };
@@ -367,10 +378,11 @@ const manejar = async (req, res) => {
       return enviarJSON(res, 200, { agentes, chatActivo: usaIA, modoPublico: MODO_PUBLICO });
     }
     if (req.method === 'POST' && url.pathname === '/api/ajustes') {
-      if (MODO_PUBLICO) return enviarJSON(res, 403, { error: 'Los ajustes solo se pueden cambiar en la versión local.' });
+      if (MODO_PUBLICO && !require('./auth.js').sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Escribe la contraseña del panel para guardar.' });
+      await refrescarAjustesNube(true);
       const { agente: id, ...cfg } = await leerCuerpo(req);
       if (!listarAgentes().some(a => a.id === id)) return enviarJSON(res, 404, { error: 'Agente no encontrado' });
-      guardarAjustes(id, cfg);
+      try { await guardarAjustes(id, cfg); } catch (e) { return enviarJSON(res, 502, { error: 'No se pudo guardar: ' + e.message }); }
       return enviarJSON(res, 200, { ok: true });
     }
     if (req.method === 'GET' && url.pathname === '/api/publicaciones') {
