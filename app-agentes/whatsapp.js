@@ -4,6 +4,9 @@ const path = require('path');
 const crypto = require('crypto');
 
 const MENSAJE = path.join(__dirname, '..', 'agentes', 'whatsapp', 'mensaje.txt');
+const MENSAJE_SEGUIMIENTO = path.join(__dirname, '..', 'agentes', 'whatsapp', 'mensaje-seguimiento.txt');
+// Horas para el seguimiento si la persona no responde (0 = sin seguimiento). Es menor a 24 porque pasadas 24 h WhatsApp solo permite plantillas aprobadas.
+const horasSeguimiento = () => (process.env.WHATSAPP_SEGUIMIENTO_HORAS !== undefined && Number(process.env.WHATSAPP_SEGUIMIENTO_HORAS) >= 0 ? Number(process.env.WHATSAPP_SEGUIMIENTO_HORAS) : 23);
 
 function leerCrudo(req) {
   return new Promise(resolve => {
@@ -43,7 +46,8 @@ async function manejarWhatsApp(req, res, url) {
     if (!process.env.WHATSAPP_TOKEN || !process.env.WHATSAPP_PHONE_ID) return fin(500, 'Faltan credenciales de WhatsApp'), true;
     try {
       const texto = fs.readFileSync(MENSAJE, 'utf8').trim();
-      const r = await require('./pendientes.js').procesar(n => enviarTexto(n, texto));
+      const seguimiento = fs.readFileSync(MENSAJE_SEGUIMIENTO, 'utf8').trim();
+      const r = await require('./pendientes.js').procesar((n, tipo) => enviarTexto(n, tipo === 'seguimiento' ? seguimiento : texto));
       return fin(200, JSON.stringify(r)), true;
     } catch (e) { console.error('whatsapp-pendientes:', e.message); return fin(500, 'Error: ' + e.message), true; }
   }
@@ -70,20 +74,25 @@ async function manejarWhatsApp(req, res, url) {
   const contestados = new Set();   // un solo mensaje por persona en cada aviso de Meta
   const retraso = (process.env.WHATSAPP_RETRASO_MIN !== undefined && Number(process.env.WHATSAPP_RETRASO_MIN) >= 0 ? Number(process.env.WHATSAPP_RETRASO_MIN) : 5) * 60000;
   const cola = [];
+  const escribieron = new Set();   // quienes acaban de escribir: si tenían un seguimiento pendiente, se cancela
+  const horas = horasSeguimiento();
   for (const e of datos.entry || []) for (const c of e.changes || []) {
     const nombres = {};
     for (const k of c.value?.contacts || []) nombres[k.wa_id] = k.profile?.name || '';
     for (const m of c.value?.messages || []) {
+      if (m.from) escribieron.add(m.from);
       const delAnuncio = !!(m.referral && m.from);   // solo contesta a quien llega desde el anuncio
       let respuesta = 'ninguna';
       if (delAnuncio && !contestados.has(m.from)) {
         contestados.add(m.from);
         if (!puedeEnviar) respuesta = 'sin credenciales';
-        else if (retraso > 0 && process.env.WHATSAPP_CRON_SECRET) { cola.push({ id: m.id, numero: m.from, vence: Date.now() + retraso }); respuesta = 'programada'; }
+        else if (retraso > 0 && process.env.WHATSAPP_CRON_SECRET) { cola.push({ id: m.id, numero: m.from, vence: Date.now() + retraso, tipo: 'primero' }); respuesta = 'programada'; }
         else {
           try { await enviarTexto(m.from, texto); respuesta = 'enviada'; }
           catch (err) { respuesta = 'error'; console.error('whatsapp:', err.message); }
         }
+        // seguimiento: solo si hay reloj externo y credenciales; se cancela si la persona vuelve a escribir
+        if (puedeEnviar && process.env.WHATSAPP_CRON_SECRET && horas > 0 && m.id) cola.push({ id: m.id + ':seg', numero: m.from, vence: Date.now() + horas * 3600000, tipo: 'seguimiento' });
       }
       registros.push({
         id: m.id || '', red: 'whatsapp', nombre: nombres[m.from] || '', numero: m.from || '', tipo: m.type || '',
@@ -91,6 +100,10 @@ async function manejarWhatsApp(req, res, url) {
         origen: delAnuncio ? 'anuncio' : 'directo', respuesta
       });
     }
+  }
+  if (escribieron.size && process.env.WHATSAPP_CRON_SECRET) {
+    try { await require('./pendientes.js').cancelarSeguimientos(escribieron); }
+    catch (err) { console.error('pendientes: no se pudo revisar respuestas:', err.message); }
   }
   if (cola.length) {
     try { await require('./pendientes.js').agregar(cola); }
