@@ -35,7 +35,19 @@ function cerrarTodo() {
 }
 document.querySelectorAll('[data-cerrar]').forEach(b => b.addEventListener('click', cerrarTodo));
 $('#velo').addEventListener('click', cerrarTodo);
-$('#btn-dash').addEventListener('click', () => abrir('cajon-dash'));
+const COLORES = ['#5E8C61', '#E08A4B', '#5E7FB0', '#C4553D', '#8A6FB0', '#3E8C8C'];
+
+// ---------- menú: una sección a la vez ----------
+function irA(vista) {
+  document.body.dataset.vista = vista;
+  document.querySelectorAll('.vista').forEach(v => { v.hidden = v.id !== 'vista-' + vista; });
+  document.querySelectorAll('.menu button').forEach(b => b.classList.toggle('activo', b.dataset.vista === vista));
+  try { localStorage.setItem('vista', vista); } catch { /* sin almacenamiento */ }
+  if (vista === 'redes') setTimeout(pintarGrafica, 0);   // la gráfica necesita medir su ancho ya visible
+  if (vista === 'mensajes') cargarMensajes();
+}
+document.querySelectorAll('.menu button').forEach(b => b.addEventListener('click', () => irA(b.dataset.vista)));
+document.addEventListener('click', e => { const b = e.target.closest('[data-ir]'); if (b) irA(b.dataset.ir); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarTodo(); });
 
 // ---------- datos ----------
@@ -52,36 +64,17 @@ async function cargar() {
   pintarAgentesPanel();
   pintarRedes();
   pintarGrafica();
-  pintarAgentesMini();
   pintarRegistro(reg.registro);
+  pintarSemana();
+  pintarBarrasRedes();
   if (!cachePosts.__listo) { cachePosts.__listo = true; cargarPost(); }
-  if (!oficinaIniciada) {
-    oficinaIniciada = true;
-    montarOficina(agentes, id => abrirChat(id));
-  }
-}
-
-// ---------- oficina: 3D si carga Three.js; si no, la versión 2D ----------
-function montarOficina(ag, cb) {
-  let hecho = false;
-  const arrancar3D = () => {
-    if (hecho || !window.iniciar3D) return false;
-    hecho = true;
-    try { window.iniciar3D(ag, cb, document.getElementById('oficina')); }
-    catch (e) { console.error(e); iniciarOficina(ag, cb); }
-    return true;
-  };
-  if (!arrancar3D()) {
-    window.addEventListener('escena3d-lista', arrancar3D, { once: true });
-    setTimeout(() => { if (!hecho) { hecho = true; iniciarOficina(ag, cb); } }, 6000);
-  }
 }
 
 // ---------- caras de los agentes ----------
 function cara(color, trabaja) {
   return `<svg viewBox="0 0 44 44" width="44" height="44" aria-hidden="true">
     <circle cx="22" cy="22" r="21" fill="${color}" opacity=".16"/>
-    <circle cx="22" cy="22" r="20" fill="none" stroke="${trabaja ? '#F5B800' : '#D9D2C5'}" stroke-width="2"/>
+    <circle cx="22" cy="22" r="20" fill="none" stroke="${trabaja ? '#e72c5e' : '#D9D2C5'}" stroke-width="2"/>
     <path d="M10 42 Q22 27 34 42 Z" fill="${color}"/>
     <circle cx="22" cy="19" r="8.5" fill="#F2C9A0"/>
     <path d="M13.5 17.5 Q14 9.5 22 9.5 Q30.5 9.5 30.5 17.5 Q27 13.5 22 14 Q17 13.5 13.5 17.5 Z" fill="#2B2F2A"/>
@@ -156,7 +149,7 @@ function abrirAjustes(id) {
     cerrar();
     const ag = await fetch('/api/agentes').then(r => r.json());
     agentes = ag.agentes;
-    pintarAgentesPanel(); pintarAgentesMini();
+    pintarAgentesPanel();
     if (agenteActivo === id) $('#chat-cabecera').textContent = agentes.find(x => x.id === id).nombre;
   };
   m.querySelector('[data-restablecer]').addEventListener('click', () => guardar({}));
@@ -274,7 +267,7 @@ function pintarGrafica() {
       <text x="${M.l - 8}" y="${+yy + 4}" text-anchor="end" font-size="10" fill="#9AA095">${fmt(Math.round(v))}</text>`;
   }).join('');
   const idG = 'g-' + red.id;
-  const trazo = '#FFD95A';   // amarillo del tema, sobre tarjeta oscura
+  const trazo = '#e72c5e';   // rosa del tema
   const ult = pts[pts.length - 1];
   const etiquetas = `<text x="${M.l}" y="${H - 6}" font-size="10" fill="#9AA095">${pts[0].fechaTexto}</text>
     <text x="${W - M.r}" y="${H - 6}" font-size="10" fill="#9AA095" text-anchor="end">${ult.fechaTexto}</text>`;
@@ -286,7 +279,7 @@ function pintarGrafica() {
     <path d="${linea}" fill="none" stroke="${trazo}" stroke-width="2.6" stroke-linecap="round"/>
     <line class="guia" x1="0" x2="0" y1="${M.t}" y2="${H - M.b}" stroke="${trazo}" stroke-dasharray="3 3" opacity="0"/>
     <circle class="punto-activo" r="5" fill="#26272B" stroke="${trazo}" stroke-width="2.5" opacity="0"/>
-    <circle cx="${ps[ps.length - 1][0]}" cy="${ps[ps.length - 1][1]}" r="4.5" fill="#F7695C"/>
+    <circle cx="${ps[ps.length - 1][0]}" cy="${ps[ps.length - 1][1]}" r="4.5" fill="#2B2B2A"/>
     ${etiquetas}
   </svg>
   <div class="tip" hidden></div>`;
@@ -310,17 +303,32 @@ function pintarGrafica() {
 let redimension;
 window.addEventListener('resize', () => { clearTimeout(redimension); redimension = setTimeout(pintarGrafica, 150); });
 
-// ---------- cajón: agentes y ejecuciones ----------
-function pintarAgentesMini() {
-  $('#lista-agentes-mini').innerHTML = agentes.map(a => `
-    <div class="mini-agente">
-      <div><strong>${a.nombre}</strong><small>${a.horario}</small></div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <span class="etiq ${a.ultimo && a.ultimo.resultado === 'OK' ? 'ok' : 'error'}">${a.ultimo ? a.ultimo.resultado : 'Pendiente'}</span>
-        <button class="boton-chat" data-chat="${a.id}">Hablar</button>
-      </div>
-    </div>`).join('') || '<p class="neu">No hay agentes todavía.</p>';
-  $('#lista-agentes-mini').querySelectorAll('[data-chat]').forEach(b => b.addEventListener('click', () => abrirChat(b.dataset.chat)));
+// ---------- inicio: seguidores de la semana y por red ----------
+function pintarSemana() {
+  const ult = datos.slice(-8);
+  const cont = $('#barras-sem');
+  if (ult.length < 2) { $('#seg-semana').textContent = '—'; cont.innerHTML = ''; return; }
+  const total = r => REDES.reduce((s, x) => s + (r[x.id] || 0), 0);
+  const difs = ult.slice(1).map((d, i) => total(d) - total(ult[i]));
+  const suma = difs.reduce((a, b) => a + b, 0);
+  $('#seg-semana').innerHTML = `${suma > 0 ? '+' : ''}${fmt(suma)} <span class="neu">esta semana</span>`;
+  const max = Math.max(1, ...difs.map(Math.abs));
+  cont.innerHTML = difs.map((v, i) => {
+    const t = new Date(); t.setDate(t.getDate() - (difs.length - 1 - i));
+    const dia = ['D', 'L', 'M', 'M', 'J', 'V', 'S'][t.getDay()];
+    return `<div class="${i === difs.length - 1 ? 'hoy' : ''} ${v === 0 ? 'vacio' : ''}"><i style="height:${Math.max(6, Math.round(Math.abs(v) / max * 80))}px"></i>${dia}</div>`;
+  }).join('');
+}
+function pintarBarrasRedes() {
+  const u = datos[datos.length - 1];
+  const cont = $('#barras-redes');
+  if (!u) { cont.innerHTML = '<p class="neu">Sin datos de seguidores.</p>'; return; }
+  const valores = REDES.map(r => ({ r, v: u[r.id] })).filter(x => x.v != null);
+  const max = Math.max(1, ...valores.map(x => x.v));
+  cont.innerHTML = valores.map((x, i) => `<div class="fila-red"><span class="n">${x.r.nombre}</span><div class="r"><div style="width:${Math.max(3, Math.round(x.v / max * 100))}%;background:${i % 2 ? '#e72c5e' : '#2B2B2A'}"></div></div><b>${fmt(x.v)}</b></div>`).join('');
+  const total = valores.reduce((s, x) => s + x.v, 0);
+  $('#grandes').dataset.seguidores = total;
+  pintarGrandes();
 }
 function pintarRegistro(filas) {
   if (!filas || !filas.length) { $('#registro').innerHTML = '<p class="neu">Todavía no hay ejecuciones.</p>'; return; }
@@ -419,18 +427,131 @@ $('#formulario').addEventListener('submit', async e => {
 });
 
 // ---------- Mensajes de Meta (sección privada: en línea pide contraseña) ----------
-const CANALES_MSG = [{ id: '', nombre: 'Todos' }, { id: 'whatsapp', nombre: 'WhatsApp' }, { id: 'facebook', nombre: 'Facebook' }, { id: 'instagram', nombre: 'Instagram' }];
-let canalMsg = '';
-let temporizadorMsg = null;
-function pintarChipsMsg() {
-  $('#chips-msg').innerHTML = CANALES_MSG.map(c =>
-    `<button class="chip-msg ${c.id === canalMsg ? 'activo' : ''}" data-canal="${c.id}" ${c.pronto ? 'disabled title="Falta conectar los permisos de Meta"' : ''}>${c.nombre}${c.pronto ? ' · pronto' : ''}</button>`).join('');
-  $('#chips-msg').querySelectorAll('button:not([disabled])').forEach(b => b.addEventListener('click', () => { canalMsg = b.dataset.canal; pintarChipsMsg(); cargarMensajes(); }));
+const RED_MSG = {
+  whatsapp: { nombre: 'WhatsApp', icono: '<path d="M12 3a9 9 0 0 0-7.7 13.6L3 21l4.5-1.2A9 9 0 1 0 12 3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.2 8.5c.3 3 2.4 5.5 5.8 6.4l1.2-1.5-1.9-.9-.9.8a4.600 4.600 0 0 1-2.300-2.300l.8-.9-.9-1.900z" fill="currentColor"/>' },
+  facebook: { nombre: 'Facebook', icono: REDES[1].icono },
+  instagram: { nombre: 'Instagram', icono: REDES[0].icono },
+};
+let conversaciones = [];
+let convActiva = '';
+let resumenCola = { pendientes: 0, proximo: '' };
+let finProximo = 0;
+const hora = f => { const t = new Date(f); return isNaN(t) ? '' : t.toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); };
+
+// Agrupa los mensajes (de todos los sentidos) por persona y red
+function armarConversaciones(lista) {
+  const mapa = new Map();
+  [...lista].reverse().forEach(m => {   // de más viejo a más nuevo
+    if (!RED_MSG[m.red]) return;
+    const clave = m.red + '|' + (m.telefono || m.nombre || '');
+    let c = mapa.get(clave);
+    if (!c) { c = { clave, red: m.red, nombre: '', telefono: m.telefono || '', mensajes: [] }; mapa.set(clave, c); }
+    if (m.nombre && m.direccion !== 'salida') c.nombre = m.nombre;
+    c.mensajes.push(m);
+  });
+  return [...mapa.values()].map(c => {
+    const ult = c.mensajes[c.mensajes.length - 1];
+    const sinResp = ult.direccion !== 'salida' && ult.respuesta !== 'enviada';   // 'enviada' = el agente ya contestó (así quedó anotado antes de guardar las salidas)
+    const enEspera = sinResp && ult.respuesta === 'programada';
+    return { ...c, ult, titulo: c.nombre || c.telefono || 'Sin nombre', estado: enEspera ? 'espera' : sinResp ? 'sin' : 'ok' };
+  }).sort((a, b) => new Date(b.ult.fecha) - new Date(a.ult.fecha));
 }
+const pendiente = c => c.estado !== 'ok';
+const inicial = c => (c.titulo.replace(/[@+•]/g, '').trim().charAt(0) || '?').toUpperCase();
+const vistaPrevia = c => (c.ult.direccion === 'salida' ? 'Respuesta: ' : '') + (c.ult.texto || '[' + (c.ult.tipo || 'mensaje') + ']');
+
+function filaContacto(c) {
+  return `<button type="button" class="ct ${c.clave === convActiva ? 'sel' : ''}" data-conv="${esc(c.clave)}">
+    <span class="av">${esc(inicial(c))}</span><span class="x"><span class="n">${esc(c.titulo)}</span><span class="s">${esc(vistaPrevia(c))}</span></span><span class="punto ${pendiente(c) ? '' : 'ok'}"></span></button>`;
+}
+function etiquetaRed(lista) {
+  const p = lista.filter(pendiente).length;
+  return `<span class="etq-red ${p ? 'p' : ''}">${p ? p + (p === 1 ? ' pendiente' : ' pendientes') : 'al día'}</span>`;
+}
+function pintarColumnas() {
+  const cont = $('#cols-msg');
+  cont.innerHTML = Object.entries(RED_MSG).map(([id, r]) => {
+    const lista = conversaciones.filter(c => c.red === id);
+    return `<section class="col-red"><div class="cab"><svg viewBox="0 0 24 24" aria-hidden="true">${r.icono}</svg>${r.nombre}${etiquetaRed(lista)}</div>
+      <div class="lista-col">${lista.length ? lista.map(filaContacto).join('') : '<div class="sin">Todavía no hay conversaciones.</div>'}</div></section>`;
+  }).join('');
+  cont.querySelectorAll('[data-conv]').forEach(b => b.addEventListener('click', () => { convActiva = b.dataset.conv; pintarColumnas(); pintarConversacion(true); }));
+}
+function pintarConversacion(desplazar) {
+  const cont = $('#conv');
+  const c = conversaciones.find(x => x.clave === convActiva);
+  if (!c) { cont.hidden = true; return; }
+  cont.hidden = false;
+  const r = RED_MSG[c.red];
+  const burbujas = c.mensajes.map(m => {
+    const salida = m.direccion === 'salida';
+    const cls = !salida ? 'cli' : m.origen === 'manual' ? 'yo' : 'ag';
+    const quien = !salida ? c.titulo : m.origen === 'manual' ? 'Tú' : 'Agente automático';
+    return `<div class="burbuja-c ${cls}">${esc(m.texto || '[' + (m.tipo || 'mensaje') + ']')}<small>${esc(quien)} · ${esc(hora(m.fecha))}</small></div>`;
+  }).join('');
+  const est = c.estado === 'ok' ? ['Respondido', ''] : c.estado === 'espera' ? ['Respuesta programada', 'p'] : ['Sin respuesta', 'p'];
+  cont.innerHTML = `<div class="cab"><span class="av"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">${r.icono}</svg></span>
+    <div><p>${esc(c.titulo)}</p><p class="s">${r.nombre}${c.nombre && c.telefono ? ' · ' + esc(c.telefono) : ''}</p></div>
+    <span class="est ${est[1]}">${est[0]}</span><button class="cerrar-conv" type="button" aria-label="Cerrar conversación">×</button></div>
+    <div class="hilo">${burbujas}</div>
+    <div class="leyenda"><span class="l1">Cliente</span><span class="l2">Agente automático</span><span class="l3">Tú</span></div>`;
+  cont.querySelector('.cerrar-conv').addEventListener('click', () => { convActiva = ''; pintarColumnas(); pintarConversacion(); });
+  const hilo = cont.querySelector('.hilo'); hilo.scrollTop = hilo.scrollHeight;
+  if (desplazar) cont.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ---------- inicio: cifras, porcentajes, reloj y mensajes ----------
+const diaLocal = f => new Date(f).toLocaleDateString('en-CA');   // aaaa-mm-dd en la zona del navegador
+function pintarGrandes() {
+  const hoy = diaLocal(Date.now());
+  const todos = conversaciones.flatMap(c => c.mensajes);
+  const recibidos = todos.filter(m => m.direccion !== 'salida' && diaLocal(m.fecha) === hoy).length;
+  const enviados = todos.filter(m => m.direccion === 'salida' && diaLocal(m.fecha) === hoy).length;
+  const seg = Number($('#grandes').dataset.seguidores || 0);
+  $('#grandes').innerHTML = `<div><strong>${recibidos}</strong>Mensajes hoy</div><div><strong>${resumenCola.pendientes}</strong>En cola de envío</div><div><strong>${enviados}</strong>Enviados hoy</div><div><strong>${seg ? compacto(seg) : '—'}</strong>Seguidores</div>`;
+}
+function pintarPorcentajes() {
+  const tot = conversaciones.length;
+  const cont = $('#barras-pct');
+  if (!tot) { cont.innerHTML = ''; return; }
+  const n = { ok: 0, espera: 0, sin: 0 };
+  conversaciones.forEach(c => n[c.estado]++);
+  const pct = k => Math.round(n[k] / tot * 100);
+  const w = k => Math.max(14, pct(k));
+  cont.innerHTML = `<div class="seg" style="flex:${w('ok')}">Respondidos<b style="background:#2B2B2A;color:#fff">${pct('ok')}%</b></div>
+    <div class="seg" style="flex:${w('espera')}">En espera<b style="background:#e72c5e;color:#fff">${pct('espera')}%</b></div>
+    <div class="seg" style="flex:${w('sin')}">Sin respuesta<b style="border:1px solid #B4B2A9">${pct('sin')}%</b></div>`;
+}
+function pintarInicioMensajes() {
+  const cont = $('#inicio-msg');
+  cont.innerHTML = Object.entries(RED_MSG).map(([id, r]) => {
+    const lista = conversaciones.filter(c => c.red === id);
+    return `<div class="grupo-h"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">${r.icono}</svg>${r.nombre}${etiquetaRed(lista)}</div>
+      ${lista.slice(0, 2).map(filaContacto).join('') || '<div class="vacio-msg">Sin conversaciones.</div>'}`;
+  }).join('');
+  cont.querySelectorAll('[data-conv]').forEach(b => b.addEventListener('click', () => { convActiva = b.dataset.conv; irA('mensajes'); pintarColumnas(); pintarConversacion(true); }));
+  $('#aviso-mensajes').hidden = !conversaciones.some(pendiente);
+}
+function pintarReloj() {
+  const cont = $('#reloj');
+  const resta = finProximo - Date.now();
+  const total = 5 * 60000;
+  let texto = '--:--', extra = resumenCola.pendientes ? resumenCola.pendientes + ' envíos en cola' : 'No hay envíos en espera', prog = 0;
+  if (finProximo) {
+    if (resta > 0) { const s = Math.ceil(resta / 1000); texto = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); prog = Math.min(1, Math.max(0, 1 - resta / total)); }
+    else { texto = '00:00'; extra = 'Se envía en el próximo minuto'; prog = 1; }
+  }
+  const circ = 2 * Math.PI * 52;
+  cont.innerHTML = `<div class="aro"><svg viewBox="0 0 132 132" role="img" aria-label="Cuenta regresiva"><circle cx="66" cy="66" r="52" fill="none" stroke="rgba(0,0,0,.08)" stroke-width="9"/><circle cx="66" cy="66" r="52" fill="none" stroke="#e72c5e" stroke-width="9" stroke-linecap="round" stroke-dasharray="${(circ * prog).toFixed(1)} ${circ.toFixed(1)}" transform="rotate(-90 66 66)"/></svg>
+    <div class="centro"><div class="tiempo">${texto}</div><div class="pie">para enviar</div></div></div><div class="extra">${extra}</div>`;
+}
+setInterval(pintarReloj, 1000);
+
 function formularioClave(texto) {
-  $('#lista-msg').innerHTML = `<form class="clave-msg" id="form-clave"><p>${esc(texto)}</p>
+  $('#cols-msg').innerHTML = `<form class="clave-msg" id="form-clave"><p>${esc(texto)}</p>
     <input type="password" id="clave-msg" placeholder="Contraseña" autocomplete="current-password" required>
     <button type="submit">Entrar</button><span class="error-msg" id="error-clave"></span></form>`;
+  $('#conv').hidden = true;
   $('#form-clave').addEventListener('submit', async e => {
     e.preventDefault();
     try {
@@ -441,32 +562,29 @@ function formularioClave(texto) {
     } catch { $('#error-clave').textContent = 'Sin conexión con el servidor'; }
   });
 }
-function pintarMensajes2(lista) {
-  if (!lista.length) { $('#lista-msg').innerHTML = '<div class="vacio-msg">Todavía no ha llegado ningún mensaje.</div>'; return; }
-  const ETQ = { programada: ['Respuesta programada', ''], enviada: ['Respuesta enviada', 'ok'], error: ['Error al responder', 'mal'], 'sin credenciales': ['Faltan credenciales', 'mal'] };
-  $('#lista-msg').innerHTML = lista.map(m => {
-    const e = ETQ[m.respuesta];
-    return `<div class="msg-item"><div class="msg-cab"><b>${esc(m.nombre || m.telefono || 'Sin nombre')}</b><span>${esc(hace(m.fecha))}</span></div>
-      ${m.nombre && m.telefono ? `<div class="msg-tel">${esc(m.telefono)}</div>` : ''}
-      <div class="msg-texto">${esc(m.texto || '[' + (m.tipo || 'mensaje') + ']')}</div>
-      <div class="msg-pie"><span class="msg-red">${esc(m.red)}</span>${m.origen === 'anuncio' ? '<span class="msg-etq">Anuncio</span>' : ''}${e ? `<span class="msg-etq ${e[1]}">${e[0]}</span>` : ''}</div></div>`;
-  }).join('');
-}
 async function cargarMensajes() {
   try {
-    const r = await fetch('/api/mensajes' + (canalMsg ? '?red=' + canalMsg : ''));
+    const r = await fetch('/api/mensajes?todos=1');
     const j = await r.json();
     $('#salir-msg').hidden = !(r.ok && modoPublico);
-    if (r.status === 401) { formularioClave(j.configurada === false ? 'La contraseña del panel todavía no está configurada.' : 'Escribe la contraseña para ver los mensajes.'); return; }
-    if (!r.ok) { $('#lista-msg').innerHTML = `<div class="vacio-msg">${esc(j.error || 'No se pudieron cargar')}</div>`; return; }
-    pintarMensajes2(j.mensajes || []);
-  } catch { $('#lista-msg').innerHTML = '<div class="vacio-msg">Sin conexión con el servidor.</div>'; }
+    if (r.status === 401) {
+      formularioClave(j.configurada === false ? 'La contraseña del panel todavía no está configurada.' : 'Escribe la contraseña para ver los mensajes.');
+      $('#inicio-msg').innerHTML = '<div class="vacio-msg">Entra a Mensajes con tu contraseña para verlos aquí.</div>';
+      return;
+    }
+    if (!r.ok) { $('#cols-msg').innerHTML = `<div class="vacio-msg">${esc(j.error || 'No se pudieron cargar')}</div>`; return; }
+    conversaciones = armarConversaciones(j.mensajes || []);
+    resumenCola = j.resumen || resumenCola;
+    finProximo = resumenCola.proximo ? Date.parse(resumenCola.proximo) : 0;
+    pintarColumnas(); pintarConversacion(); pintarInicioMensajes(); pintarPorcentajes(); pintarGrandes(); pintarReloj();
+  } catch { $('#cols-msg').innerHTML = '<div class="vacio-msg">Sin conexión con el servidor.</div>'; }
 }
 $('#salir-msg').addEventListener('click', async () => { await fetch('/api/logout', { method: 'POST' }); cargarMensajes(); });
 $('#actualizar-msg').addEventListener('click', cargarMensajes);
-pintarChipsMsg();
+$('#fecha-hoy').textContent = new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }).replace(/^./, c => c.toUpperCase());
 cargarMensajes();
-temporizadorMsg = setInterval(() => { if (!document.hidden && !document.querySelector('#clave-msg')) cargarMensajes(); }, 30000);
+setInterval(() => { if (!document.hidden && !document.querySelector('#clave-msg')) cargarMensajes(); }, 30000);
+try { const v = localStorage.getItem('vista'); if (v && document.getElementById('vista-' + v)) irA(v); } catch { /* sin almacenamiento */ }
 
 cargar();
 setInterval(cargar, 5 * 60 * 1000);

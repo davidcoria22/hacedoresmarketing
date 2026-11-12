@@ -3,81 +3,101 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Agentes · Hacedores</title>
-  <link rel="stylesheet" href="styles.css">
+  <title>Panel · Hacedores</title>
+  <link rel="stylesheet" href="styles.css?v=rosa1">
 </head>
-<body>
-  <!-- Barra superior: logo a la izquierda, agentes y ejecuciones a la derecha del todo -->
-  <header class="barra-top">
-    <div class="saludo">
-      <h1>¡Hola, Hacedores!</h1>
-      <p>Echemos un vistazo a tus agentes hoy</p>
-    </div>
-    <button class="btn-dash" id="btn-dash" title="Agentes y ejecuciones" aria-label="Agentes y ejecuciones">
-      <svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 17 L9 11 L13 15 L21 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 3 V21 H21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-    </button>
-  </header>
+<body data-vista="inicio">
+  <div class="lienzo">
+    <header class="cabecera">
+      <div class="logo-pildora">Hacedores</div>
+      <nav class="menu" aria-label="Secciones">
+        <button class="activo" data-vista="inicio">Inicio</button>
+        <button data-vista="mensajes">Mensajes<i class="aviso-nav" id="aviso-mensajes" hidden></i></button>
+        <button data-vista="redes">Redes</button>
+        <button data-vista="agentes">Agentes</button>
+      </nav>
+      <div class="cab-acc"><span class="estado-sistema" id="estado-sistema"></span></div>
+    </header>
 
-  <!-- Oficina al centro -->
-  <main class="escena-principal">
-    <div id="oficina" class="oficina"></div>
-    <p class="pie-escena" id="estado-chat"></p>
-  </main>
-
-  <!-- Panel derecho fijo: gráfica arriba, redes abajo -->
-  <aside class="panel-derecho" aria-label="Seguidores">
-    <div class="tarjeta-post">
-      <div class="iconos-posts" id="iconos-posts"></div>
-      <div id="post-ultimo" class="post-ultimo"></div>
-    </div>
-    <div class="tarjeta-grafica">
-      <div class="titulo-tarjeta">
-        <h3 id="titulo-grafica">Seguidores · Instagram</h3>
-        <span class="neu" style="font-size:11px">últimos 60 días</span>
+    <!-- INICIO -->
+    <main class="vista" id="vista-inicio">
+      <h1 class="saludo">Hola, Hacedores</h1>
+      <p class="fecha" id="fecha-hoy"></p>
+      <div class="resumen">
+        <div class="barras-pct" id="barras-pct"></div>
+        <div class="grandes" id="grandes"></div>
       </div>
-      <div id="grafica" class="grafica"></div>
-    </div>
-    <div class="tarjeta-panel">
-      <div class="titulo-tarjeta"><h3>Redes</h3><span class="neu" style="font-size:11px">seguidores hoy</span></div>
-      <div class="lista-redes" id="lista-redes"></div>
-    </div>
-  </aside>
-
-  <!-- Panel izquierdo fijo: agentes -->
-  <aside class="panel-izquierdo" aria-label="Agentes">
-    <div class="tarjeta-panel">
-      <div class="titulo-tarjeta"><h3>Agentes</h3><span class="neu" style="font-size:11px">toca para hablar</span></div>
-      <div id="lista-agentes-panel" class="lista-agentes"></div>
-    </div>
-    <div class="tarjeta-panel tarjeta-mensajes">
-      <div class="titulo-tarjeta">
-        <h3>Mensajes</h3>
-        <span class="acc-msg"><button id="actualizar-msg" class="mini-msg" title="Actualizar">↻</button><button id="salir-msg" class="mini-msg" title="Cerrar sesión" hidden>Salir</button></span>
+      <div class="rejilla">
+        <section class="tarjeta">
+          <div class="tit"><h3>Seguidores</h3><span class="neu">últimos 7 días</span></div>
+          <div class="cifra-g" id="seg-semana">—</div>
+          <div class="barras-sem" id="barras-sem"></div>
+        </section>
+        <section class="tarjeta">
+          <div class="tit"><h3>Próximo mensaje</h3></div>
+          <div class="reloj" id="reloj"></div>
+        </section>
+        <section class="tarjeta oscura fila-doble">
+          <div class="tit"><h3>Mensajes</h3><button class="enlace-claro" data-ir="mensajes">Ver todos</button></div>
+          <div id="inicio-msg" class="inicio-msg"></div>
+        </section>
+        <section class="tarjeta ancha">
+          <div class="tit"><h3>Seguidores por red</h3><span class="neu">hoy</span></div>
+          <div id="barras-redes"></div>
+        </section>
       </div>
-      <div class="chips-msg" id="chips-msg"></div>
-      <div id="lista-msg" class="lista-msg"><div class="vacio-msg">Cargando…</div></div>
-    </div>
-  </aside>
+    </main>
 
-  <!-- Cajón: agentes y ejecuciones -->
-  <section class="cajon" id="cajon-dash" aria-label="Agentes y ejecuciones">
-    <div class="cajon-cab">
-      <h2>Agentes y ejecuciones</h2>
-      <button class="cerrar" data-cerrar="cajon-dash" aria-label="Cerrar">×</button>
-    </div>
-    <div class="cajon-cuerpo">
-      <div class="bloque">
-        <h3>Agentes</h3>
-        <div id="lista-agentes-mini"></div>
+    <!-- MENSAJES -->
+    <main class="vista" id="vista-mensajes" hidden>
+      <div class="tit-vista">
+        <div><h1 class="saludo">Mensajes</h1><p class="fecha">Toca una conversación para verla completa</p></div>
+        <span class="acc-msg"><button id="actualizar-msg" class="mini-msg" title="Actualizar">Actualizar</button><button id="salir-msg" class="mini-msg" title="Cerrar sesión" hidden>Salir</button></span>
       </div>
-      <div class="bloque">
-        <h3>Últimas ejecuciones</h3>
-        <div id="registro"></div>
+      <div id="zona-msg">
+        <div class="cols-msg" id="cols-msg"><div class="vacio-msg">Cargando…</div></div>
+        <section class="conv" id="conv" hidden></section>
       </div>
-    </div>
-  </section>
+    </main>
 
-  <!-- Chat lateral -->
+    <!-- REDES -->
+    <main class="vista" id="vista-redes" hidden>
+      <h1 class="saludo">Redes</h1>
+      <div class="rejilla dos">
+        <section class="tarjeta">
+          <div class="tit"><h3 id="titulo-grafica">Seguidores</h3><span class="neu">últimos 60 días</span></div>
+          <div id="grafica" class="grafica"></div>
+        </section>
+        <section class="tarjeta">
+          <div class="tit"><h3>Redes</h3><span class="neu">seguidores hoy</span></div>
+          <div class="lista-redes" id="lista-redes"></div>
+        </section>
+        <section class="tarjeta ancha">
+          <div class="tit"><h3>Última publicación</h3></div>
+          <div class="iconos-posts" id="iconos-posts"></div>
+          <div id="post-ultimo" class="post-ultimo"></div>
+        </section>
+      </div>
+    </main>
+
+    <!-- AGENTES -->
+    <main class="vista" id="vista-agentes" hidden>
+      <h1 class="saludo">Agentes</h1>
+      <p class="fecha" id="estado-chat"></p>
+      <div class="rejilla dos">
+        <section class="tarjeta">
+          <div class="tit"><h3>Agentes</h3><span class="neu">toca para hablar</span></div>
+          <div id="lista-agentes-panel" class="lista-agentes"></div>
+        </section>
+        <section class="tarjeta">
+          <div class="tit"><h3>Últimas ejecuciones</h3></div>
+          <div id="registro"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- Chat lateral con un agente -->
   <section class="cajon" id="cajon-chat" aria-label="Chat con agente">
     <div class="cajon-cab">
       <h2 id="chat-cabecera">Chat</h2>
@@ -94,17 +114,6 @@
   </section>
 
   <div class="velo" id="velo"></div>
-
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-    }
-  }
-  </script>
-  <script src="oficina.js"></script>
-  <script type="module" src="escena3d.js?v=plano13"></script>
-  <script src="app.js"></script>
+  <script src="app.js?v=rosa1"></script>
 </body>
 </html>

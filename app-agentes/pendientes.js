@@ -89,6 +89,15 @@ async function procesar(enviar, ahora = Date.now(), maximo = 20) {
   return { enviados, errores, pendientes };
 }
 
+// Para el panel: cuántos envíos esperan y a qué hora vence el próximo mensaje del curso.
+async function resumen() {
+  const h = ayudas(), token = await h.tokenGoogle('spreadsheets.readonly');
+  const filas = (await leerFilas(h, token)) || [];
+  const pend = filas.filter(f => f[3] === 'pendiente');
+  const vencen = pend.filter(f => tipoDe(f) === 'primero').map(f => Date.parse(f[2])).filter(n => !isNaN(n));
+  return { pendientes: pend.length, proximo: vencen.length ? new Date(Math.min(...vencen)).toISOString() : '' };
+}
+
 // id -> 'pendiente' | 'enviado' | 'error' (para mostrarlo en la tarjeta de mensajes; solo el mensaje principal)
 async function estados() {
   const h = ayudas(), token = await h.tokenGoogle('spreadsheets.readonly');
@@ -96,4 +105,4 @@ async function estados() {
   return Object.fromEntries((filas || []).filter(f => tipoDe(f) === 'primero').map(f => [f[0], f[3]]));
 }
 
-module.exports = { agregar, cancelarSeguimientos, procesar, estados, mascara };
+module.exports = { agregar, cancelarSeguimientos, procesar, estados, resumen, mascara };

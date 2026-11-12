@@ -365,7 +365,13 @@ const manejar = async (req, res) => {
     if (req.method === 'GET' && url.pathname === '/api/mensajes') {
       if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, configurada: auth.configurada() });
       const red = url.searchParams.get('red') || '';
-      try { return enviarJSON(res, 200, { mensajes: await require('./mensajes.js').leerMensajes(60, red) }); }
+      const todos = url.searchParams.get('todos') === '1';   // con todos=1 incluye lo que se envió, para armar las conversaciones
+      try {
+        const mensajes = await require('./mensajes.js').leerMensajes(todos ? 800 : 60, red, todos);
+        let resumen = { pendientes: 0, proximo: '' };
+        try { resumen = await require('./pendientes.js').resumen(); } catch { /* sin cola todavía */ }
+        return enviarJSON(res, 200, { mensajes, resumen });
+      }
       catch (e) { return enviarJSON(res, 502, { error: 'No se pudieron leer los mensajes: ' + e.message }); }
     }
     const usaIA = !MODO_PUBLICO && !!process.env.ANTHROPIC_API_KEY;   // en línea nunca se gasta la clave de IA
