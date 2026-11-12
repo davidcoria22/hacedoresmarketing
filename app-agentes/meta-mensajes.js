@@ -15,18 +15,38 @@ function firmaValida(crudo, cabecera, secreto) {
 }
 
 // Nombre o @usuario de quien escribe (mejor esfuerzo: si falla, se anota sin nombre)
-async function perfil(id, red) {
+async function pedir(ruta, token) {
+  const r = await fetch('https://graph.facebook.com/v21.0/' + ruta + (ruta.includes('?') ? '&' : '?') + 'access_token=' + encodeURIComponent(token), { signal: AbortSignal.timeout(3000) });
+  const t = await r.text();
+  if (!r.ok) return { ok: false, motivo: 'estado ' + r.status + ': ' + t.slice(0, 140) };
+  try { return { ok: true, j: JSON.parse(t) }; } catch { return { ok: false, motivo: 'respuesta no válida' }; }
+}
+async function perfil(id, red, mid) {
   // META_PAGE_TOKEN: token de página de la app de mensajes. Se limpian espacios, saltos de línea y comillas que se cuelan al pegarlo.
-  const token = String(process.env.META_PAGE_TOKEN || process.env.FACEBOOK_PAGE_TOKEN || '').replace(/\s+/g, '').replace(/^["']+|["']+$/g, '');
+  const token = String(process.env.META_PAGE_TOKEN || process.env.FACEBOOK_PAGE_TOKEN || '').replace(/s+/g, '').replace(/^["']+|["']+$/g, '');
   if (!token || !id) return '';
-  try {
-    const campos = red === 'instagram' ? 'name,username' : 'first_name,last_name';
-    const r = await fetch('https://graph.facebook.com/v21.0/' + encodeURIComponent(id) + '?fields=' + campos + '&access_token=' + encodeURIComponent(token), { signal: AbortSignal.timeout(3000) });
-    if (!r.ok) { console.error('meta: no se pudo leer el nombre (' + red + ', estado ' + r.status + '): ' + (await r.text()).slice(0, 160)); return ''; }
-    const j = await r.json();
-    if (j.username) return '@' + j.username;
-    return j.name || [j.first_name, j.last_name].filter(Boolean).join(' ');
-  } catch (e) { console.error('meta: error al leer el nombre:', e.message); return ''; }
+  const intentos = [];
+  // 1) perfil del usuario; 2) quién envió ese mensaje en concreto
+  if (red === 'instagram') {
+    intentos.push(['perfil', encodeURIComponent(id) + '?fields=name,username']);
+    if (mid) intentos.push(['mensaje', encodeURIComponent(mid) + '?fields=from{username,name}']);
+  } else {
+    intentos.push(['perfil', encodeURIComponent(id) + '?fields=first_name,last_name']);
+    if (mid) intentos.push(['mensaje', encodeURIComponent(mid) + '?fields=from{name}']);
+  }
+  const fallos = [];
+  for (const [etiqueta, ruta] of intentos) {
+    try {
+      const r = await pedir(ruta, token);
+      if (!r.ok) { fallos.push(etiqueta + ' ' + r.motivo); continue; }
+      const j = r.j.from || r.j;
+      const nombre = j.username ? '@' + j.username : (j.name || [j.first_name, j.last_name].filter(Boolean).join(' '));
+      if (nombre) return nombre;
+      fallos.push(etiqueta + ' sin nombre en la respuesta');
+    } catch (e) { fallos.push(etiqueta + ' error: ' + e.message); }
+  }
+  console.error('meta: no se pudo leer el nombre (' + red + '): ' + fallos.join(' | '));
+  return '';
 }
 
 function textoDe(m) {
@@ -65,7 +85,7 @@ async function manejarMeta(req, res, url) {
     for (const ev of eventos) {
       const m = ev.message; if (!m || m.is_echo) continue;   // los "eco" son los mensajes que manda la propia cuenta
       const de = ev.sender?.id || ''; if (!de) continue;
-      registros.push({ id: m.mid || '', red, nombre: await perfil(de, red), numero: de, tipo: m.attachments ? 'adjunto' : 'text', texto: textoDe(m), origen: 'directo', respuesta: 'ninguna' });
+      registros.push({ id: m.mid || '', red, nombre: await perfil(de, red, m.mid), numero: de, tipo: m.attachments ? 'adjunto' : 'text', texto: textoDe(m), origen: 'directo', respuesta: 'ninguna' });
     }
   }
   if (registros.length) {
