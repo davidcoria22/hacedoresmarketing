@@ -475,7 +475,7 @@ function pintarColumnas() {
     return `<section class="col-red"><div class="cab"><svg viewBox="0 0 24 24" aria-hidden="true">${r.icono}</svg>${r.nombre}${etiquetaRed(lista)}</div>
       <div class="lista-col">${lista.length ? lista.map(filaContacto).join('') : '<div class="sin">Todavía no hay conversaciones.</div>'}</div></section>`;
   }).join('');
-  cont.querySelectorAll('[data-conv]').forEach(b => b.addEventListener('click', () => { convActiva = b.dataset.conv; pintarConversacion(); }));
+  cont.querySelectorAll('[data-conv]').forEach(b => b.addEventListener('click', () => abrirConversacion(b.dataset.conv)));
 }
 function pintarConversacion(desplazar) {
   const cont = $('#conv'), modal = $('#modal-conv');
@@ -498,7 +498,38 @@ function pintarConversacion(desplazar) {
   cont.querySelector('.cerrar-conv').addEventListener('click', cerrarConversacion);
   const hilo = cont.querySelector('.hilo'); hilo.scrollTop = hilo.scrollHeight;
 }
-function cerrarConversacion() { convActiva = ''; $('#modal-conv').hidden = true; pintarColumnas(); pintarInicioMensajes(); }
+// Animación tipo iOS: la ventana crece desde el contacto que tocaste y, al cerrar, regresa a él (FLIP con curva de resorte suave)
+const CURVA_IOS = 'cubic-bezier(.32, .72, 0, 1)';
+const sinMovimiento = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+function animarConversacion(entrando) {
+  const modal = $('#modal-conv'), caja = $('#conv');
+  if (sinMovimiento() || !caja.animate) return Promise.resolve();
+  const origen = [...document.querySelectorAll('[data-conv]')].find(e => e.dataset.conv === convActiva && e.offsetParent);
+  const d = caja.getBoundingClientRect(), o = origen && origen.getBoundingClientRect();
+  const dx = o ? (o.left + o.width / 2) - (d.left + d.width / 2) : 0;
+  const dy = o ? (o.top + o.height / 2) - (d.top + d.height / 2) : 30;
+  const esc = o ? Math.max(.1, Math.min(.45, o.width / d.width)) : .9;
+  const chico = { transform: `translate(${dx}px, ${dy}px) scale(${esc})`, opacity: 0 };
+  const grande = { transform: 'translate(0, 0) scale(1)', opacity: 1 };
+  const cuadros = entrando ? [chico, { ...grande, opacity: 1, offset: .4 }, grande] : [grande, { ...chico, opacity: 0, offset: 1 }];
+  if (entrando) cuadros[1] = { opacity: 1, offset: .35 }, cuadros[1].transform = `translate(${dx * .35}px, ${dy * .35}px) scale(${esc + (1 - esc) * .5})`;
+  modal.animate([{ opacity: entrando ? 0 : 1 }, { opacity: entrando ? 1 : 0 }], { duration: entrando ? 320 : 260, easing: 'ease-out' });
+  return caja.animate(cuadros, { duration: entrando ? 520 : 300, easing: entrando ? CURVA_IOS : 'cubic-bezier(.4, 0, .2, 1)' }).finished.catch(() => {});
+}
+function abrirConversacion(clave) {
+  const nueva = $('#modal-conv').hidden;
+  convActiva = clave;
+  pintarConversacion();
+  if (nueva) animarConversacion(true);
+}
+let cerrandoConv = false;
+async function cerrarConversacion() {
+  if (cerrandoConv || $('#modal-conv').hidden) return;
+  cerrandoConv = true;
+  await Promise.race([animarConversacion(false), new Promise(r => setTimeout(r, 450))]);   // tope por si el navegador pausa la animación
+  convActiva = ''; $('#modal-conv').hidden = true; cerrandoConv = false;
+  pintarColumnas(); pintarInicioMensajes();
+}
 $('#modal-conv').addEventListener('mousedown', e => { if (e.target === $('#modal-conv')) cerrarConversacion(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#modal-conv').hidden) cerrarConversacion(); });
 
@@ -531,7 +562,7 @@ function pintarInicioMensajes() {
     return `<div class="grupo-h"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">${r.icono}</svg>${r.nombre}${etiquetaRed(lista)}</div>
       ${lista.slice(0, 2).map(filaContacto).join('') || '<div class="vacio-msg">Sin conversaciones.</div>'}`;
   }).join('');
-  cont.querySelectorAll('[data-conv]').forEach(b => b.addEventListener('click', () => { convActiva = b.dataset.conv; pintarConversacion(); }));
+  cont.querySelectorAll('[data-conv]').forEach(b => b.addEventListener('click', () => abrirConversacion(b.dataset.conv)));
   $('#aviso-mensajes').hidden = !conversaciones.some(pendiente);
 }
 function pintarReloj() {
