@@ -16,7 +16,7 @@ function firmaValida(crudo, cabecera, secreto) {
 
 // Nombre o @usuario de quien escribe (mejor esfuerzo: si falla, se anota sin nombre)
 async function perfil(id, red) {
-  const token = process.env.FACEBOOK_PAGE_TOKEN;
+  const token = process.env.META_PAGE_TOKEN || process.env.FACEBOOK_PAGE_TOKEN;   // META_PAGE_TOKEN: token de página de la app de mensajes
   if (!token || !id) return '';
   try {
     const campos = red === 'instagram' ? 'name,username' : 'name';

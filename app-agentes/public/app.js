@@ -419,7 +419,7 @@ $('#formulario').addEventListener('submit', async e => {
 });
 
 // ---------- Mensajes de Meta (sección privada: en línea pide contraseña) ----------
-const CANALES_MSG = [{ id: '', nombre: 'Todos' }, { id: 'whatsapp', nombre: 'WhatsApp' }, { id: 'facebook', nombre: 'Facebook', pronto: true }, { id: 'instagram', nombre: 'Instagram' }];
+const CANALES_MSG = [{ id: '', nombre: 'Todos' }, { id: 'whatsapp', nombre: 'WhatsApp' }, { id: 'facebook', nombre: 'Facebook' }, { id: 'instagram', nombre: 'Instagram' }];
 let canalMsg = '';
 let temporizadorMsg = null;
 function pintarChipsMsg() {
