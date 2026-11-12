@@ -344,6 +344,7 @@ const manejar = async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   try {
     if (await require('./whatsapp.js').manejarWhatsApp(req, res, url)) return;
+    if (await require('./meta-mensajes.js').manejarMeta(req, res, url)) return;
     // ---- contraseña y mensajes de clientes (sección privada) ----
     const auth = require('./auth.js');
     const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();

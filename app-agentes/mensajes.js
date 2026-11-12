@@ -28,7 +28,7 @@ async function guardarMensajes(registros) {
     }
   } catch { /* si no se puede revisar, se anota igual */ }
   if (!registros.length) return;
-  const filas = registros.map(r => [fecha, r.red, limpiar(r.nombre, 60), enmascarar(r.numero), r.tipo, limpiar(r.texto, 300), r.origen, r.respuesta, r.id || '']);
+  const filas = registros.map(r => [fecha, r.red, limpiar(r.nombre, 60), r.red === 'whatsapp' ? enmascarar(r.numero) : (r.numero ? 'ID ••' + String(r.numero).slice(-4) : ''), r.tipo, limpiar(r.texto, 300), r.origen, r.respuesta, r.id || '']);
   const url = 'https://sheets.googleapis.com/v4/spreadsheets/' + h.SHEET_ID + '/values/' + encodeURIComponent(PESTANA + '!A:I') + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS';
   const cab = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' };
   let r = await h.petición('POST', url, JSON.stringify({ values: filas }), cab);
