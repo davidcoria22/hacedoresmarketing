@@ -23,7 +23,7 @@ async function pedir(ruta, token) {
 }
 async function perfil(id, red, mid) {
   // META_PAGE_TOKEN: token de página de la app de mensajes. Se limpian espacios, saltos de línea y comillas que se cuelan al pegarlo.
-  const token = String(process.env.META_PAGE_TOKEN || process.env.FACEBOOK_PAGE_TOKEN || '').replace(/s+/g, '').replace(/^["']+|["']+$/g, '');
+  const token = String(process.env.META_PAGE_TOKEN || process.env.FACEBOOK_PAGE_TOKEN || '').replace(/\s+/g, '').replace(/^["']+|["']+$/g, '');
   if (!token || !id) return '';
   const intentos = [];
   // 1) perfil del usuario; 2) quién envió ese mensaje en concreto
@@ -83,7 +83,12 @@ async function manejarMeta(req, res, url) {
     // Formato clásico (messaging[]) y formato nuevo (changes[] con campo "messages")
     const eventos = [...(e.messaging || []), ...(e.changes || []).filter(c => c.field === 'messages').map(c => c.value)];
     for (const ev of eventos) {
-      const m = ev.message; if (!m || m.is_echo) continue;   // los "eco" son los mensajes que manda la propia cuenta
+      const m = ev.message; if (!m) continue;
+      if (m.is_echo) {   // "eco": lo que manda la propia cuenta (tú, desde la app). Se guarda como salida de esa conversación.
+        const para = ev.recipient?.id || ''; if (!para || !m.mid) continue;
+        registros.push({ id: m.mid, red, nombre: '', numero: para, tipo: m.attachments ? 'adjunto' : 'text', texto: textoDe(m), origen: 'manual', respuesta: 'enviada', direccion: 'salida' });
+        continue;
+      }
       const de = ev.sender?.id || ''; if (!de) continue;
       registros.push({ id: m.mid || '', red, nombre: await perfil(de, red, m.mid), numero: de, tipo: m.attachments ? 'adjunto' : 'text', texto: textoDe(m), origen: 'directo', respuesta: 'ninguna' });
     }

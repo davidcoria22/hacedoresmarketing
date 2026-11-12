@@ -33,6 +33,12 @@ async function enviarTexto(para, texto) {
   if (!r.ok) throw new Error('WhatsApp ' + r.status + ' ' + (await r.text()).slice(0, 200));
 }
 
+// Anota en la hoja un mensaje que mandó el agente (para ver la conversación completa). Si falla no afecta al envío.
+async function anotarSalida(id, numero, texto) {
+  try { await require('./mensajes.js').guardarMensajes([{ id, red: 'whatsapp', nombre: '', numero, tipo: 'text', texto, origen: 'agente', respuesta: 'enviada', direccion: 'salida' }]); }
+  catch (err) { console.error('mensajes: no se pudo anotar el envío:', err.message); }
+}
+
 // Devuelve true si atendió la ruta.
 async function manejarWhatsApp(req, res, url) {
   const fin = (c, t) => { res.writeHead(c, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end(t || ''); };
@@ -47,7 +53,11 @@ async function manejarWhatsApp(req, res, url) {
     try {
       const texto = fs.readFileSync(MENSAJE, 'utf8').trim();
       const seguimiento = fs.readFileSync(MENSAJE_SEGUIMIENTO, 'utf8').trim();
-      const r = await require('./pendientes.js').procesar((n, tipo) => enviarTexto(n, tipo === 'seguimiento' ? seguimiento : texto));
+      const r = await require('./pendientes.js').procesar(async (n, tipo, id) => {
+        const cuerpo = tipo === 'seguimiento' ? seguimiento : texto;
+        await enviarTexto(n, cuerpo);
+        await anotarSalida(id + ':salida', n, cuerpo);   // queda en el historial de la conversación
+      });
       return fin(200, JSON.stringify(r)), true;
     } catch (e) { console.error('whatsapp-pendientes:', e.message); return fin(500, 'Error: ' + e.message), true; }
   }
@@ -74,6 +84,7 @@ async function manejarWhatsApp(req, res, url) {
   const contestados = new Set();   // un solo mensaje por persona en cada aviso de Meta
   const retraso = (process.env.WHATSAPP_RETRASO_MIN !== undefined && Number(process.env.WHATSAPP_RETRASO_MIN) >= 0 ? Number(process.env.WHATSAPP_RETRASO_MIN) : 5) * 60000;
   const cola = [];
+  const salidas = [];   // envíos inmediatos del agente, para el historial
   const escribieron = new Set();   // quienes acaban de escribir: si tenían un seguimiento pendiente, se cancela
   const horas = horasSeguimiento();
   for (const e of datos.entry || []) for (const c of e.changes || []) {
@@ -88,7 +99,7 @@ async function manejarWhatsApp(req, res, url) {
         if (!puedeEnviar) respuesta = 'sin credenciales';
         else if (retraso > 0 && process.env.WHATSAPP_CRON_SECRET) { cola.push({ id: m.id, numero: m.from, vence: Date.now() + retraso, tipo: 'primero' }); respuesta = 'programada'; }
         else {
-          try { await enviarTexto(m.from, texto); respuesta = 'enviada'; }
+          try { await enviarTexto(m.from, texto); respuesta = 'enviada'; salidas.push({ id: m.id + ':salida', numero: m.from, texto }); }
           catch (err) { respuesta = 'error'; console.error('whatsapp:', err.message); }
         }
         // seguimiento: solo si hay reloj externo y credenciales; se cancela si la persona vuelve a escribir
@@ -112,6 +123,7 @@ async function manejarWhatsApp(req, res, url) {
       for (const r of registros) if (r.respuesta === 'programada') r.respuesta = 'error';
     }
   }
+  for (const s of salidas) registros.push({ id: s.id, red: 'whatsapp', nombre: '', numero: s.numero, tipo: 'text', texto: s.texto, origen: 'agente', respuesta: 'enviada', direccion: 'salida' });
   if (registros.length) {
     try { await require('./mensajes.js').guardarMensajes(registros); }
     catch (err) { console.error('mensajes: no se pudo guardar:', err.message); }

@@ -63,7 +63,7 @@ async function cancelarSeguimientos(numeros) {
   return cambios.length;
 }
 
-// Envía los vencidos con `enviar(numero, tipo)` y deja el resultado en la hoja (borrando el teléfono completo).
+// Envía los vencidos con `enviar(numero, tipo, id)` y deja el resultado en la hoja (borrando el teléfono completo).
 async function procesar(enviar, ahora = Date.now(), maximo = 20) {
   const h = ayudas(), token = await h.tokenGoogle('spreadsheets');
   const filas = await leerFilas(h, token);
@@ -82,7 +82,7 @@ async function procesar(enviar, ahora = Date.now(), maximo = 20) {
   const resultados = [];
   for (const i of vencidos) {
     let nuevo = 'enviado', detalle = '';
-    try { await enviar(filas[i][1], tipoDe(filas[i])); enviados++; } catch (e) { nuevo = 'error'; detalle = String(e.message).slice(0, 200); errores++; }
+    try { await enviar(filas[i][1], tipoDe(filas[i]), filas[i][0]); enviados++; } catch (e) { nuevo = 'error'; detalle = String(e.message).slice(0, 200); errores++; }
     resultados.push({ range: rangoFila(i), values: [[filas[i][0], mascara(filas[i][1]), filas[i][2], nuevo, detalle, filas[i][5] || '', tipoDe(filas[i])]] });
   }
   try { await guardarFilas(h, token, resultados); } catch (e) { console.error('pendientes: enviados pero sin guardar el resultado:', e.message); }
