@@ -475,13 +475,13 @@ function pintarColumnas() {
     return `<section class="col-red"><div class="cab"><svg viewBox="0 0 24 24" aria-hidden="true">${r.icono}</svg>${r.nombre}${etiquetaRed(lista)}</div>
       <div class="lista-col">${lista.length ? lista.map(filaContacto).join('') : '<div class="sin">Todavía no hay conversaciones.</div>'}</div></section>`;
   }).join('');
-  cont.querySelectorAll('[data-conv]').forEach(b => b.addEventListener('click', () => { convActiva = b.dataset.conv; pintarColumnas(); pintarConversacion(true); }));
+  cont.querySelectorAll('[data-conv]').forEach(b => b.addEventListener('click', () => { convActiva = b.dataset.conv; pintarConversacion(); }));
 }
 function pintarConversacion(desplazar) {
-  const cont = $('#conv');
+  const cont = $('#conv'), modal = $('#modal-conv');
   const c = conversaciones.find(x => x.clave === convActiva);
-  if (!c) { cont.hidden = true; return; }
-  cont.hidden = false;
+  if (!c) { modal.hidden = true; return; }
+  modal.hidden = false;
   const r = RED_MSG[c.red];
   const burbujas = c.mensajes.map(m => {
     const salida = m.direccion === 'salida';
@@ -495,10 +495,12 @@ function pintarConversacion(desplazar) {
     <span class="est ${est[1]}">${est[0]}</span><button class="cerrar-conv" type="button" aria-label="Cerrar conversación">×</button></div>
     <div class="hilo">${burbujas}</div>
     <div class="leyenda"><span class="l1">Cliente</span><span class="l2">Agente automático</span><span class="l3">Tú</span></div>`;
-  cont.querySelector('.cerrar-conv').addEventListener('click', () => { convActiva = ''; pintarColumnas(); pintarConversacion(); });
+  cont.querySelector('.cerrar-conv').addEventListener('click', cerrarConversacion);
   const hilo = cont.querySelector('.hilo'); hilo.scrollTop = hilo.scrollHeight;
-  if (desplazar) cont.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
+function cerrarConversacion() { convActiva = ''; $('#modal-conv').hidden = true; pintarColumnas(); pintarInicioMensajes(); }
+$('#modal-conv').addEventListener('mousedown', e => { if (e.target === $('#modal-conv')) cerrarConversacion(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#modal-conv').hidden) cerrarConversacion(); });
 
 // ---------- inicio: cifras, porcentajes, reloj y mensajes ----------
 const diaLocal = f => new Date(f).toLocaleDateString('en-CA');   // aaaa-mm-dd en la zona del navegador
@@ -529,7 +531,7 @@ function pintarInicioMensajes() {
     return `<div class="grupo-h"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">${r.icono}</svg>${r.nombre}${etiquetaRed(lista)}</div>
       ${lista.slice(0, 2).map(filaContacto).join('') || '<div class="vacio-msg">Sin conversaciones.</div>'}`;
   }).join('');
-  cont.querySelectorAll('[data-conv]').forEach(b => b.addEventListener('click', () => { convActiva = b.dataset.conv; irA('mensajes'); pintarColumnas(); pintarConversacion(true); }));
+  cont.querySelectorAll('[data-conv]').forEach(b => b.addEventListener('click', () => { convActiva = b.dataset.conv; pintarConversacion(); }));
   $('#aviso-mensajes').hidden = !conversaciones.some(pendiente);
 }
 function pintarReloj() {
@@ -551,7 +553,7 @@ function formularioClave(texto) {
   $('#cols-msg').innerHTML = `<form class="clave-msg" id="form-clave"><p>${esc(texto)}</p>
     <input type="password" id="clave-msg" placeholder="Contraseña" autocomplete="current-password" required>
     <button type="submit">Entrar</button><span class="error-msg" id="error-clave"></span></form>`;
-  $('#conv').hidden = true;
+  $('#modal-conv').hidden = true;
   $('#form-clave').addEventListener('submit', async e => {
     e.preventDefault();
     try {
