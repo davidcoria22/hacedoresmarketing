@@ -19,12 +19,13 @@ async function perfil(id, red) {
   const token = process.env.META_PAGE_TOKEN || process.env.FACEBOOK_PAGE_TOKEN;   // META_PAGE_TOKEN: token de página de la app de mensajes
   if (!token || !id) return '';
   try {
-    const campos = red === 'instagram' ? 'name,username' : 'name';
+    const campos = red === 'instagram' ? 'name,username' : 'first_name,last_name';
     const r = await fetch('https://graph.facebook.com/v21.0/' + encodeURIComponent(id) + '?fields=' + campos + '&access_token=' + encodeURIComponent(token), { signal: AbortSignal.timeout(3000) });
-    if (!r.ok) return '';
+    if (!r.ok) { console.error('meta: no se pudo leer el nombre (' + red + ', estado ' + r.status + '): ' + (await r.text()).slice(0, 160)); return ''; }
     const j = await r.json();
-    return j.username ? '@' + j.username : (j.name || '');
-  } catch { return ''; }
+    if (j.username) return '@' + j.username;
+    return j.name || [j.first_name, j.last_name].filter(Boolean).join(' ');
+  } catch (e) { console.error('meta: error al leer el nombre:', e.message); return ''; }
 }
 
 function textoDe(m) {
