@@ -88,6 +88,13 @@ async function manejarWhatsApp(req, res, url) {
   const escribieron = new Set();   // quienes acaban de escribir: si tenían un seguimiento pendiente, se cancela
   const horas = horasSeguimiento();
   for (const e of datos.entry || []) for (const c of e.changes || []) {
+    if (c.field === 'smb_message_echoes') {   // lo que respondes tú desde la app WhatsApp Business (coexistencia): se guarda como salida
+      for (const m of c.value?.message_echoes || []) {
+        if (!m.to) continue;
+        registros.push({ id: m.id || '', red: 'whatsapp', nombre: '', numero: m.to, tipo: m.type || 'text', texto: m.text?.body || m.button?.text || '', origen: 'manual', respuesta: 'enviada', direccion: 'salida' });
+      }
+      continue;
+    }
     const nombres = {};
     for (const k of c.value?.contacts || []) nombres[k.wa_id] = k.profile?.name || '';
     for (const m of c.value?.messages || []) {
