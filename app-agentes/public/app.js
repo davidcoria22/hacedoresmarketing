@@ -576,10 +576,13 @@ function pintarConversacion(desplazar) {
     <div class="leyenda"><span class="l1">Cliente</span><span class="l2">Agente automático</span><span class="l3">Tú</span></div>`;
   cont.querySelector('.cerrar-conv').addEventListener('click', cerrarConversacion);
   // si WhatsApp ya no tiene el archivo (los guarda unos 30 días) o pesa demasiado, se avisa en lugar de dejar un hueco roto
-  cont.querySelectorAll('.adj-img img, audio.adj, video.adj').forEach(el => el.addEventListener('error', () => {
-    const nota = document.createElement('span'); nota.className = 'adj-nota';
-    nota.textContent = 'No se puede mostrar este archivo: WhatsApp ya no lo tiene (los guarda unos 30 días) o es muy grande para verlo aquí.';
+  cont.querySelectorAll('.adj-img img, audio.adj, video.adj').forEach(el => el.addEventListener('error', async () => {
+    const nota = document.createElement('span'); nota.className = 'adj-nota'; nota.textContent = 'No se puede mostrar este archivo…';
+    const url = el.currentSrc || el.src;
     (el.closest('.adj') || el).replaceWith(nota);
+    let motivo = '';
+    try { const r = await fetch(url); if (!r.ok) { const j = await r.json().catch(() => ({})); motivo = j.error || ('Error ' + r.status); } } catch { motivo = 'Sin conexión con el servidor.'; }   // se pide de nuevo para decir el motivo real
+    nota.textContent = 'No se puede mostrar este archivo. ' + (motivo || 'El navegador no pudo leerlo.');
   }, { once: true }));
   const hilo = cont.querySelector('.hilo'); hilo.scrollTop = hilo.scrollHeight;
   activarRespuesta(c, borrador, teniaFoco);

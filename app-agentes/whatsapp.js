@@ -75,18 +75,22 @@ function mediaDe(m) {
 // Tope de 4 MB: es lo que permite una respuesta de Vercel. Los archivos que no son imagen/audio/video siempre se descargan, nunca se abren en la página.
 const MIME_EN_LINEA = /^(image\/(jpeg|png|webp|gif)|audio\/(ogg|mpeg|mp4|aac|amr)|video\/(mp4|3gpp))(;|$)/i;
 async function servirMedia(id, nombre, res) {
-  const fin = (c, o) => { res.writeHead(c, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(o)); };
+  const fin = (c, o) => { if (c >= 400) console.error('media ' + id + ': ' + c + ' ' + o.error); res.writeHead(c, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(o)); };
   if (!/^\d{5,30}$/.test(String(id || ''))) return fin(400, { error: 'Archivo no válido.' });
   if (!process.env.WHATSAPP_TOKEN) return fin(503, { error: 'Faltan las credenciales de WhatsApp en este servidor.' });
   if (!(await require('./mensajes.js').mediaConocida(id))) return fin(404, { error: 'Ese archivo no pertenece a ninguna conversación del panel.' });
   const cab = { Authorization: 'Bearer ' + process.env.WHATSAPP_TOKEN };
   const info = await fetch('https://graph.facebook.com/v21.0/' + id, { headers: cab, signal: AbortSignal.timeout(8000) });
-  if (!info.ok) return fin(404, { error: 'WhatsApp ya no tiene este archivo (los guarda unos 30 días).' });
+  if (!info.ok) {
+    const detalle = await info.text().catch(() => '');
+    let motivo = ''; try { motivo = JSON.parse(detalle).error?.message || ''; } catch { /* sin detalle */ }
+    return fin(404, { error: 'WhatsApp no entregó el archivo (' + info.status + (motivo ? ': ' + String(motivo).slice(0, 140) : '') + '). Si es muy viejo, WhatsApp los guarda unos 30 días.' });
+  }
   const meta = await info.json();
   if (!meta.url) return fin(404, { error: 'WhatsApp no devolvió el archivo.' });
   if (meta.file_size > 4 * 1024 * 1024) return fin(413, { error: 'El archivo es muy grande para verlo aquí (más de 4 MB). Ábrelo desde la app de WhatsApp.' });
-  const d = await fetch(meta.url, { headers: cab, signal: AbortSignal.timeout(15000) });
-  if (!d.ok) return fin(502, { error: 'No se pudo descargar el archivo.' });
+  const d = await fetch(meta.url, { headers: { ...cab, 'User-Agent': 'Hacedores-Panel/1.0' }, signal: AbortSignal.timeout(15000) });   // el servidor de archivos de Meta rechaza peticiones sin identificarse
+  if (!d.ok) return fin(502, { error: 'WhatsApp no dejó descargar el archivo (' + d.status + ').' });
   const datos = Buffer.from(await d.arrayBuffer());
   if (datos.length > 4.4 * 1024 * 1024) return fin(413, { error: 'El archivo es muy grande para verlo aquí.' });
   const mime = /^[a-z]+\/[a-z0-9.+-]+(;.*)?$/i.test(String(meta.mime_type || '')) ? meta.mime_type : 'application/octet-stream';
