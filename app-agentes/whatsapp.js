@@ -1,20 +1,9 @@
 // Webhook de WhatsApp Cloud API: responde con un mensaje fijo a quien llega desde el anuncio.
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
 
-const DIR_MENSAJES = path.join(__dirname, '..', 'agentes', 'whatsapp');
-const leerTexto = archivo => fs.readFileSync(path.join(DIR_MENSAJES, path.basename(archivo)), 'utf8').trim();
-// Cada anuncio puede tener su propio mensaje: agentes/whatsapp/anuncios.json dice qué palabras lo identifican y qué textos usar.
-// Lo que no coincida con ninguno usa mensaje.txt y mensaje-seguimiento.txt (el del curso de impresión 3D).
-const listaAnuncios = () => { try { return JSON.parse(fs.readFileSync(path.join(DIR_MENSAJES, 'anuncios.json'), 'utf8')); } catch { return []; } };
-function elegirAnuncio(m) {
-  const r = m.referral || {};
-  const pajar = [r.headline, r.body, r.source_url, r.source_id, m.text?.body].filter(Boolean).join(' ').toLowerCase();
-  return listaAnuncios().find(a => (a.palabras || []).some(p => pajar.includes(String(p).toLowerCase()))) || null;
-}
-const textosDe = a => ({ mensaje: leerTexto(a?.mensaje || 'mensaje.txt'), seguimiento: leerTexto(a?.seguimiento || 'mensaje-seguimiento.txt') });
-const anuncioPorId = id => listaAnuncios().find(a => a.id === id) || null;
+// Los mensajes por anuncio (texto, seguimiento y palabras clave) se editan desde el panel: ver anuncios.js
+const A = require('./anuncios.js');
+const elegirAnuncio = m => A.elegir(m);
 // Horas para el seguimiento si la persona no responde (0 = sin seguimiento; por defecto 2). Debe ser menor a 24: pasadas 24 h WhatsApp solo permite plantillas aprobadas.
 const horasSeguimiento = () => (process.env.WHATSAPP_SEGUIMIENTO_HORAS !== undefined && Number(process.env.WHATSAPP_SEGUIMIENTO_HORAS) >= 0 ? Number(process.env.WHATSAPP_SEGUIMIENTO_HORAS) : 2);
 
@@ -123,7 +112,7 @@ async function manejarWhatsApp(req, res, url) {
     if (!process.env.WHATSAPP_TOKEN || !process.env.WHATSAPP_PHONE_ID) return fin(500, 'Faltan credenciales de WhatsApp'), true;
     try {
       const r = await require('./pendientes.js').procesar(async (n, tipo, id, anuncio) => {
-        const t = textosDe(anuncioPorId(anuncio));   // el texto sale según el anuncio del que llegó la persona
+        const t = await A.textos(anuncio);   // el texto sale según el anuncio del que llegó la persona
         const cuerpo = tipo === 'seguimiento' ? t.seguimiento : t.mensaje;
         await enviarTexto(n, cuerpo);
         await anotarSalida(id + ':salida', n, cuerpo);   // queda en el historial de la conversación
@@ -170,14 +159,14 @@ async function manejarWhatsApp(req, res, url) {
       if (m.from) escribieron.add(m.from);
       const delAnuncio = !!(m.referral && m.from);   // solo contesta a quien llega desde el anuncio
       let respuesta = 'ninguna';
-      const anuncio = delAnuncio ? elegirAnuncio(m) : null;
+      const anuncio = delAnuncio ? await elegirAnuncio(m) : null;
       if (delAnuncio && !contestados.has(m.from)) {
         contestados.add(m.from);
         const idAnuncio = anuncio?.id || '';
         if (!puedeEnviar) respuesta = 'sin credenciales';
         else if (retraso > 0 && process.env.WHATSAPP_CRON_SECRET) { cola.push({ id: m.id, numero: m.from, vence: Date.now() + retraso, tipo: 'primero', anuncio: idAnuncio }); respuesta = 'programada'; }
         else {
-          const texto = textosDe(anuncio).mensaje;
+          const texto = (await A.textos(anuncio?.id || '')).mensaje;
           try { await enviarTexto(m.from, texto); respuesta = 'enviada'; salidas.push({ id: m.id + ':salida', numero: m.from, texto }); }
           catch (err) { respuesta = 'error'; console.error('whatsapp:', err.message); }
         }

@@ -268,6 +268,7 @@ function abrirAjustes(id) {
     </div>
     <label>Notas para el chat <small>(se suman a sus instrucciones cuando hablas con él)</small><textarea name="notas" rows="4" maxlength="1000" placeholder="Ej. Responde siempre con emojis">${esc(a.notas)}</textarea></label>
     ${modoPublico ? '<label>Contraseña del panel <small>(necesaria para guardar en línea)</small><input type="password" name="clave" autocomplete="current-password"></label>' : ''}
+    ${id === 'whatsapp' ? '<button type="button" class="sec btn-anuncios" data-anuncios>Mensajes por anuncio…</button>' : ''}
     <span class="error-msg" data-aviso></span>
     <p class="nota-aj">Horario actual: ${esc(a.horario)} (se cambia en la tarea programada).</p>
     <div class="botones-aj"><button type="button" class="sec" data-restablecer>Restablecer</button><span style="flex:1"></span><button type="button" class="sec" data-cancelar>Cancelar</button><button type="submit">Guardar</button></div>
@@ -276,6 +277,7 @@ function abrirAjustes(id) {
   const cerrar = () => m.remove();
   m.addEventListener('mousedown', e => { if (e.target === m) cerrar(); });
   m.querySelector('[data-cancelar]').addEventListener('click', cerrar);
+  const bAn = m.querySelector('[data-anuncios]'); if (bAn) bAn.addEventListener('click', () => { cerrar(); abrirAnuncios(); });
   const aviso = t => { m.querySelector('[data-aviso]').textContent = t; };
   const guardar = async cfg => {
     const clave = m.querySelector('input[name=clave]')?.value;
@@ -300,6 +302,67 @@ function abrirAjustes(id) {
     guardar({ nombre: f.get('nombre'), rol: f.get('rol'), color: f.get('color'), notas: f.get('notas') });
   });
   m.querySelector('input[name=nombre]').focus();
+}
+
+// ---------- mensajes automáticos por anuncio (agente de WhatsApp) ----------
+async function abrirAnuncios() {
+  const m = document.createElement('div');
+  m.className = 'modal-ajustes';
+  m.innerHTML = '<div class="modal-caja caja-anuncios"><h3>Mensajes por anuncio</h3><p class="nota-aj">Cuando alguien llega desde un anuncio, el agente responde con el mensaje de ese anuncio y, si la persona no contesta, manda el seguimiento. Los cambios valen desde el siguiente mensaje que llegue.</p><div data-lista><p class="neu">Cargando…</p></div><span class="error-msg" data-aviso></span><div class="botones-aj"><button type="button" class="sec" data-nuevo>+ Agregar anuncio</button><span style="flex:1"></span><button type="button" class="sec" data-cerrar>Cerrar</button></div></div>';
+  document.body.appendChild(m);
+  const cerrar = () => m.remove();
+  m.addEventListener('mousedown', e => { if (e.target === m) cerrar(); });
+  m.querySelector('[data-cerrar]').addEventListener('click', cerrar);
+  const aviso = t => { m.querySelector('[data-aviso]').textContent = t || ''; };
+  const llamar = async (metodo, url, cuerpo) => {
+    const r = await fetch(url, { method: metodo, headers: { 'Content-Type': 'application/json', 'x-panel': '1' }, body: cuerpo ? JSON.stringify(cuerpo) : undefined });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'No se pudo completar.');
+    return j;
+  };
+  const tarjeta = a => {
+    const nuevo = !a.id;
+    return `<form class="anuncio-edit" data-id="${esc(a.id || '')}">
+      <div class="anuncio-cab"><b>${nuevo ? 'Anuncio nuevo' : esc(a.nombre)}</b>${a.editado ? '<i class="mini-etq ok">Editado</i>' : ''}</div>
+      ${nuevo || !a.original ? `<label>Nombre del anuncio<input name="nombre" maxlength="60" value="${esc(a.nombre || '')}" placeholder="Ej. Viernes de Consejo Maker"></label>` : ''}
+      ${a.id === 'general' ? '<small>Se usa para los anuncios que no coinciden con ninguna palabra clave de los demás.</small>' : `<label>Palabras clave <small>(separadas por coma; si aparecen en el anuncio o en el mensaje de la persona, se usa este mensaje)</small><input name="palabras" value="${esc((a.palabras || []).join(', '))}" placeholder="Ej. consejo maker, viernes"></label>`}
+      <label>Mensaje de respuesta<textarea name="mensaje" rows="6" maxlength="1500">${esc(a.mensaje || '')}</textarea></label>
+      <label>Mensaje de seguimiento <small>(si no contesta)</small><textarea name="seguimiento" rows="4" maxlength="1500">${esc(a.seguimiento || '')}</textarea></label>
+      <div class="botones-aj"><span class="ok-guardado" data-ok></span><span style="flex:1"></span>
+        ${nuevo ? '<button type="button" class="sec" data-quitar-nuevo>Descartar</button>' : (a.original ? (a.editado ? '<button type="button" class="sec" data-quitar>Restaurar el original</button>' : '') : '<button type="button" class="sec" data-quitar>Eliminar</button>')}
+        <button type="submit">Guardar</button></div>
+    </form>`;
+  };
+  const pintar = async () => {
+    try {
+      const { anuncios } = await fetch('/api/anuncios').then(r => { if (!r.ok) throw new Error('No se pudieron cargar los anuncios.'); return r.json(); });
+      m.querySelector('[data-lista]').innerHTML = anuncios.map(tarjeta).join('');
+      enlazar();
+    } catch (e) { m.querySelector('[data-lista]').innerHTML = '<p class="neu">' + esc(e.message) + '</p>'; }
+  };
+  const enlazar = () => m.querySelectorAll('form.anuncio-edit').forEach(f => {
+    if (f.dataset.listo) return; f.dataset.listo = '1';
+    f.addEventListener('submit', async e => {
+      e.preventDefault(); aviso('');
+      const d = new FormData(f);
+      try {
+        await llamar('POST', '/api/anuncios', { id: f.dataset.id, nombre: d.get('nombre') || undefined, palabras: d.get('palabras') || '', mensaje: d.get('mensaje'), seguimiento: d.get('seguimiento') });
+        await pintar();
+      } catch (err) { aviso(err.message); f.scrollIntoView({ block: 'nearest' }); }
+    });
+    const q = f.querySelector('[data-quitar]');
+    if (q) q.addEventListener('click', async () => {
+      if (!confirm(q.textContent.startsWith('Restaurar') ? 'Se vuelve al mensaje original. ¿Seguro?' : 'Se elimina este anuncio. ¿Seguro?')) return;
+      try { await llamar('DELETE', '/api/anuncios?id=' + encodeURIComponent(f.dataset.id)); await pintar(); } catch (err) { aviso(err.message); }
+    });
+    const qn = f.querySelector('[data-quitar-nuevo]'); if (qn) qn.addEventListener('click', () => f.remove());
+  });
+  m.querySelector('[data-nuevo]').addEventListener('click', () => {
+    if (m.querySelector('form.anuncio-edit[data-id=""]')) return;
+    m.querySelector('[data-lista]').insertAdjacentHTML('beforeend', tarjeta({ original: false }));
+    enlazar(); const t = m.querySelector('form.anuncio-edit[data-id=""]'); t.scrollIntoView({ block: 'nearest' }); t.querySelector('input[name=nombre]').focus();
+  });
+  pintar();
 }
 
 // ---------- último post por red (arriba de la gráfica) ----------

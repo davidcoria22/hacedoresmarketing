@@ -397,3 +397,13 @@ html.verificando body { visibility: hidden; }
 #burbuja-masc .bub-red em { margin-left: auto; padding-left: 14px; }
 
 #burbuja-masc .monto-venta { font-size: 20px; font-weight: 500; color: var(--color-masc, var(--rosa)); }
+
+/* Mensajes por anuncio */
+.btn-anuncios { align-self: flex-start; border: 0; border-radius: 999px; padding: 8px 18px; background: var(--fondo); cursor: pointer; }
+.btn-anuncios:hover { background: var(--rosa-suave); }
+.modal-caja.caja-anuncios { width: min(640px, 94vw); }
+.anuncio-edit { display: flex; flex-direction: column; gap: 10px; background: #FAF8F5; border-radius: 22px; padding: 16px; margin-bottom: 12px; }
+.anuncio-edit + .anuncio-edit { margin-top: 0; }
+.anuncio-cab { display: flex; align-items: center; gap: 8px; font-weight: 400; font-size: 15px; }
+.anuncio-edit textarea, .anuncio-edit input { background: #fff !important; }
+.anuncio-cab .mini-etq.ok { background: var(--rosa-suave); color: var(--rosa); }

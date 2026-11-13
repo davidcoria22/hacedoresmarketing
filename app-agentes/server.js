@@ -396,6 +396,19 @@ const manejar = async (req, res) => {
         return enviarJSON(res, r.codigo || 200, r.ok ? { ok: true } : { error: r.error });
       } catch (e) { return enviarJSON(res, 502, { error: 'No se pudo enviar: ' + e.message }); }
     }
+    if (url.pathname === '/api/anuncios') {   // mensajes automáticos por anuncio (se editan desde el panel)
+      if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra para ver los anuncios.' });
+      const An = require('./anuncios.js');
+      try {
+        if (req.method === 'GET') return enviarJSON(res, 200, { anuncios: await An.listar() });
+        if (req.method === 'POST' || req.method === 'DELETE') {
+          if (req.headers['x-panel'] !== '1') return enviarJSON(res, 403, { error: 'Solicitud no válida.' });
+          const r = req.method === 'DELETE' ? await An.quitar(url.searchParams.get('id')) : await An.guardar(await leerCuerpo(req));
+          return enviarJSON(res, r.ok ? 200 : 400, r.ok ? { ok: true, id: r.id } : { error: r.error });
+        }
+        return enviarJSON(res, 405, { error: 'Método no permitido' });
+      } catch (e) { return enviarJSON(res, 502, { error: 'No se pudo completar: ' + e.message }); }
+    }
     const usaIA = !MODO_PUBLICO && !!process.env.ANTHROPIC_API_KEY;   // en línea nunca se gasta la clave de IA
     if (req.method === 'GET' && url.pathname === '/api/ventas') {   // ventas de WooCommerce (hoy, mes y las últimas)
       if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra con tu cuenta.' });
