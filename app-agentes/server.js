@@ -338,7 +338,8 @@ function leerCuerpo(req) {
     let d = ''; req.on('data', c => d += c); req.on('end', () => { try { resolve(JSON.parse(d || '{}')); } catch { resolve({}); } });
   });
 }
-const TIPOS = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'application/javascript; charset=utf-8' };
+const TIPOS = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.ico': 'image/x-icon', '.svg': 'image/svg+xml' };
+const BINARIOS = new Set(['.png', '.jpg', '.jpeg', '.ico']);   // imágenes: se envían tal cual, sin leerlas como texto
 
 const manejar = async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
@@ -444,7 +445,9 @@ const manejar = async (req, res) => {
     // archivos estáticos
     const archivo = path.join(PUBLIC, url.pathname === '/' ? 'index.html' : url.pathname);
     if (!archivo.startsWith(PUBLIC)) { res.writeHead(403); return res.end(); }
-    const contenido = leerTexto(archivo);
+    let contenido;
+    if (BINARIOS.has(path.extname(archivo))) { try { contenido = fs.readFileSync(archivo); } catch { contenido = null; } }
+    else contenido = leerTexto(archivo);
     if (contenido === null) { res.writeHead(404); return res.end('No encontrado'); }
     res.writeHead(200, { 'Content-Type': TIPOS[path.extname(archivo)] || 'text/plain' });
     res.end(contenido);

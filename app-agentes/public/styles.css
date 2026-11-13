@@ -27,7 +27,7 @@ button { font: inherit; color: inherit; }
 
 /* cabecera y menú */
 .cabecera { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.logo-pildora { border: 1px solid var(--texto); border-radius: 999px; padding: 7px 20px; font-size: 18px; }
+.logo-img { display: block; height: 34px; width: auto; }
 .menu { display: flex; gap: 2px; background: var(--vidrio); border-radius: 999px; padding: 4px; }
 .menu button { position: relative; border: 0; background: none; padding: 8px 18px; border-radius: 999px; font-size: 14px; color: #4A4944; cursor: pointer; }
 .menu button.activo { background: var(--oscuro); color: #fff; }
