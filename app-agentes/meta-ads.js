@@ -17,7 +17,9 @@ async function graph(ruta, params = {}, metodo = 'GET', token = process.env.META
   if (!r.ok || j.error) {
     const e = j.error || {};
     const msg = e.code === 190 ? 'Meta rechazó el token (caducó o no es válido). Genera uno nuevo.'
-      : (e.code === 200 || e.code === 10 || e.code === 294) ? 'El token no tiene permiso para esta cuenta. Revisa que el usuario del sistema tenga la cuenta publicitaria asignada y los permisos ads_read / ads_management.'
+      : (e.code === 200 || e.code === 10 || e.code === 294) ? (/^\/\d+(\/|$)/.test(ruta) && !/^\/\d+\/(adsets|ads)$/.test(ruta) && ruta.split('/').length > 2
+          ? 'El token no tiene permiso para leer tu página de Facebook (' + String(e.message || '').slice(0, 120) + '). Asigna la página al usuario del sistema con control total y genera el token con los permisos pages_read_engagement, pages_show_list, ads_management y ads_read.'
+          : 'El token no tiene permiso para esta cuenta. Revisa que el usuario del sistema tenga la cuenta publicitaria asignada y los permisos ads_read / ads_management.')
       : (e.code === 100 && ruta === '/' + cuentaId()) ? 'Meta no encontró la cuenta publicitaria. Revisa el ID en META_ADS_ACCOUNT_ID.'
       : 'Meta respondió ' + r.status + (e.error_user_msg || e.message ? ': ' + String(e.error_user_msg || e.message).slice(0, 300) : '.');
     throw new Error(msg);

@@ -26,10 +26,12 @@ const firmarGoogle = t => crypto.createHmac('sha256', secretoGoogle()).update(t)
 function usuarioGoogle(req) {
   const [cuerpo, firma] = String(cookies(req).gsesion || '').split('.');
   if (!cuerpo || !firma || !googleActivo() || !iguales(firma, firmarGoogle(cuerpo))) return null;
-  try { const d = JSON.parse(Buffer.from(cuerpo, 'base64url').toString('utf8')); return d.x > Date.now() && d.e ? { email: d.e, nombre: d.n || '' } : null; } catch { return null; }
+  try { const d = JSON.parse(Buffer.from(cuerpo, 'base64url').toString('utf8')); return d.x > Date.now() && d.e ? { email: d.e, nombre: d.n || '', foto: d.p || '' } : null; } catch { return null; }
 }
-function cookieGoogle(email, nombre, seguro) {
-  const cuerpo = Buffer.from(JSON.stringify({ e: email, n: String(nombre).slice(0, 80), x: Date.now() + DURACION })).toString('base64url');
+// solo se guarda la foto si es una dirección https de Google (nada que el navegador pueda cargar de otro sitio)
+const fotoValida = f => (/^https:\/\/[a-z0-9.-]+\.(googleusercontent\.com|ggpht\.com)\/[\w\-./=%?&]*$/i.test(String(f || '')) && String(f).length <= 300 ? String(f) : '');
+function cookieGoogle(email, nombre, seguro, foto) {
+  const cuerpo = Buffer.from(JSON.stringify({ e: email, n: String(nombre).slice(0, 80), p: fotoValida(foto), x: Date.now() + DURACION })).toString('base64url');
   return 'gsesion=' + cuerpo + '.' + firmarGoogle(cuerpo) + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + DURACION / 1000 + (seguro ? '; Secure' : '');
 }
 const cookieGoogleBorrar = seguro => 'gsesion=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0' + (seguro ? '; Secure' : '');

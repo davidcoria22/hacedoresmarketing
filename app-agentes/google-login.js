@@ -34,7 +34,7 @@ async function manejarGoogle(req, res, url, { modoPublico }) {
     if (!auth.googleActivo()) return json(res, 200, { abierto: true }), true;
     const u = auth.usuarioGoogle(req);
     if (!u) return json(res, 401, { requiereLogin: true }, { 'X-Login': '/entrar.html' }), true;
-    return json(res, 200, { google: true, email: u.email, nombre: u.nombre }), true;
+    return json(res, 200, { google: true, email: u.email, nombre: u.nombre, foto: u.foto }), true;
   }
 
   if (url.pathname === '/api/auth/google') {
@@ -68,7 +68,7 @@ async function manejarGoogle(req, res, url, { modoPublico }) {
       const emisorOk = p.iss === 'https://accounts.google.com' || p.iss === 'accounts.google.com';
       if (!emisorOk || p.aud !== ID() || !(p.exp * 1000 > Date.now()) || p.nonce !== nonce || p.email_verified !== true) return fallo('fallo'), true;
       if (!permitido(p.email)) { console.error('google-login: cuenta sin acceso:', String(p.email).replace(/^(.).*(@.*)$/, '$1***$2')); return fallo('cuenta'), true; }
-      return volver(res, '/', [auth.cookieGoogle(p.email, p.name || '', seguro(req)), cookieEstado('', req, 0)]), true;
+      return volver(res, '/', [auth.cookieGoogle(p.email, p.name || '', seguro(req), p.picture), cookieEstado('', req, 0)]), true;
     } catch (e) { console.error('google-login:', e.message); return fallo('fallo'), true; }
   }
   return false;

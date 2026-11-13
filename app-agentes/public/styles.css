@@ -25,16 +25,27 @@ button { font: inherit; color: inherit; }
 .neu { color: var(--suave); font-size: 12px; }
 .pos { color: var(--bien); } .neg { color: #C23A2C; }
 
-/* cabecera y menú */
-.cabecera { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.logo-img { display: block; height: 34px; width: auto; }
-.menu { display: flex; gap: 2px; background: var(--vidrio); border-radius: 999px; padding: 4px; }
-.menu button { position: relative; border: 0; background: none; padding: 8px 18px; border-radius: 999px; font-size: 14px; color: #4A4944; cursor: pointer; }
+/* menú lateral (perfil + secciones) */
+.lienzo { flex-direction: row !important; gap: 28px; }
+.lateral { width: 232px; flex: none; position: sticky; top: 24px; align-self: flex-start; height: calc(100vh - 76px); min-height: 440px; display: flex; flex-direction: column; gap: 14px; background: var(--vidrio); border-radius: 28px; padding: 20px 14px 16px; }
+.contenido { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.logo-img { display: block; height: 30px; width: auto; align-self: flex-start; margin: 2px 6px 4px; }
+.perfil { display: flex; align-items: center; gap: 10px; padding: 8px 8px 12px; border-bottom: .5px solid var(--linea); }
+.avatar { width: 42px; height: 42px; border-radius: 50%; flex: none; display: grid; place-items: center; overflow: hidden; background: var(--rosa-suave); color: var(--rosa); font-size: 15px; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.perfil-datos { display: flex; flex-direction: column; min-width: 0; line-height: 1.3; }
+.perfil-datos b { font-weight: 400; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.perfil-datos small, .estado-sistema { font-size: 11.5px; color: var(--suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu-titulo { margin: 6px 10px 0; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--suave); }
+.menu { display: flex; flex-direction: column; gap: 4px; }
+.menu button { position: relative; display: flex; align-items: center; gap: 12px; width: 100%; border: 0; background: none; padding: 11px 14px; border-radius: 16px; font-size: 14.5px; color: #4A4944; cursor: pointer; text-align: left; }
+.menu button svg { flex: none; }
 .menu button.activo { background: var(--oscuro); color: #fff; }
 .menu button:not(.activo):hover { background: rgba(255, 255, 255, .9); }
-.aviso-nav { position: absolute; top: 6px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--rosa); }
-.cab-acc { min-width: 120px; text-align: right; }
-.estado-sistema { font-size: 12px; color: var(--suave); }
+.aviso-nav { position: absolute; top: 50%; right: 14px; transform: translateY(-50%); width: 8px; height: 8px; border-radius: 50%; background: var(--rosa); }
+.lateral-pie { margin-top: auto; display: flex; flex-direction: column; gap: 8px; }
+.lateral-pie .mini-msg { width: 100%; background: var(--fondo); }
+.lateral-pie .mini-msg:hover { background: var(--rosa-suave); }
 
 /* cada sección ocupa todo el alto disponible de la pantalla */
 .vista:not([hidden]) { flex: 1; display: flex; flex-direction: column; }
@@ -268,7 +279,18 @@ th { color: var(--suave); font-weight: 500; font-size: 11px; text-transform: upp
   .tarjeta.ancha, .tarjeta.oscura { grid-column: auto; grid-row: auto; }
   .grandes strong { font-size: 36px; }
   .burbuja-c { max-width: 88%; }
-  .menu button { padding: 8px 12px; }
+  .lienzo { flex-direction: column !important; gap: 16px; }
+  .lateral { width: auto; position: static; height: auto; min-height: 0; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px; }
+  .lateral .logo-img { margin: 0; }
+  .perfil { border: 0; padding: 0; margin-left: auto; }
+  .perfil-datos small { display: none; }
+  .menu-titulo { display: none; }
+  .menu { flex-direction: row; width: 100%; gap: 2px; overflow-x: auto; }
+  .menu button { padding: 9px 12px; width: auto; flex: 1 1 0; justify-content: center; font-size: 13.5px; }
+  .menu button svg { display: none; }
+  .aviso-nav { top: 8px; right: 8px; transform: none; }
+  .lateral-pie { margin: 0; width: 100%; flex-direction: row; justify-content: flex-end; }
+  .lateral-pie .mini-msg { width: auto; }
 }
 
 /* ---------- Mascotas (los agentes caminando por el panel) ---------- */

@@ -14,6 +14,13 @@
     listo();
     if (j.google) {
       const quien = document.getElementById('estado-sistema'); if (quien) quien.textContent = j.email;
+      const nombre = (j.nombre || String(j.email || '').split('@')[0] || 'Hacedores').trim();
+      const pn = document.getElementById('perfil-nombre'); if (pn) pn.textContent = nombre;
+      const pa = document.getElementById('perfil-avatar');
+      if (pa) {
+        pa.textContent = nombre.split(/\s+/).slice(0, 2).map(p => p[0]).join('').toUpperCase() || 'H';
+        if (j.foto) { const im = new Image(); im.alt = ''; im.referrerPolicy = 'no-referrer'; im.onload = () => { pa.textContent = ''; pa.appendChild(im); }; im.src = j.foto; }
+      }
       const salir = document.getElementById('btn-salir-google');
       if (salir) { salir.hidden = false; salir.addEventListener('click', async () => { await nativo('/api/logout', { method: 'POST' }); location.replace('/entrar.html'); }); }
     }
