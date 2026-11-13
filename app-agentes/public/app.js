@@ -95,8 +95,42 @@ function cara(color, trabaja) {
   </svg>`;
 }
 
+// ---------- ventas de WooCommerce: se consultan cada minuto y cada venta nueva la anuncia su mascota ----------
+let ventas = null;
+const dinero = n => '$' + Number(n || 0).toLocaleString('es-MX', { maximumFractionDigits: 2 });
+const CLAVE_VENTA = 'ventas-ultima-id';
+function anunciarVentas(nuevas) {
+  const total = nuevas.reduce((s, o) => s + o.total, 0);
+  const html = '<div class="bub-cab"><b>' + (nuevas.length === 1 ? '¡Nueva venta!' : '¡' + nuevas.length + ' ventas nuevas!') + '</b><span>Ventas de WooCommerce</span></div>' +
+    nuevas.slice(-3).map(o => '<p class="bub-linea"><b>' + esc(o.productos.join(', ') || 'Pedido ' + o.id) + '</b><br>' + dinero(o.total) + '</p>').join('') +
+    (nuevas.length > 1 ? '<p class="bub-pie">Suman ' + dinero(total) + '</p>' : '');
+  if (window.Mascotas) Mascotas.anunciar('ventas-woocommerce', html, 12000);
+}
+function revisarVentasNuevas(lista) {
+  let visto = null;
+  try { const g = localStorage.getItem(CLAVE_VENTA); visto = g === null ? null : Number(g); } catch { /* sin almacenamiento */ }
+  const maxId = lista.length ? Math.max(...lista.map(o => o.id)) : 0;
+  const guardar = n => { try { localStorage.setItem(CLAVE_VENTA, String(n)); } catch { /* sin almacenamiento */ } };
+  if (visto === null) { guardar(maxId); return; }   // primera vez en este navegador: no se anuncia lo que ya existía
+  const nuevas = lista.filter(o => o.id > visto).sort((a, b) => a.id - b.id);
+  if (!nuevas.length) return;
+  guardar(maxId);
+  anunciarVentas(nuevas);
+}
+async function cargarVentas() {
+  try {
+    const r = await fetch('/api/ventas'), j = await r.json().catch(() => ({}));
+    if (!r.ok) { ventas = { error: j.error || 'No se pudieron leer las ventas.' }; return; }
+    ventas = j;
+    revisarVentasNuevas(j.ultimas || []);
+  } catch { /* sin conexión: se reintenta en un minuto */ }
+}
+cargarVentas();
+setInterval(() => { if (!document.hidden) cargarVentas(); }, 60 * 1000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) cargarVentas(); });
+
 // ---------- mascotas: cada agente camina por el panel y su burbuja muestra la última actualización ----------
-const ultimaTexto = a => (a.ultimo ? 'Última actualización: ' + a.ultimo.fecha + (a.ultimo.resultado ? ' · ' + a.ultimo.resultado : '') : 'Sin actualizaciones todavía');
+const ultimaTexto = a => (a.ultimo ? (a.ultimo.fecha ? 'Última actualización: ' + a.ultimo.fecha + (a.ultimo.resultado ? ' · ' + a.ultimo.resultado : '') + (a.id === 'ventas-woocommerce' && a.ultimo.nota ? ' · ' + a.ultimo.nota : '') : (a.ultimo.nota || a.ultimo.resultado || 'Sin actualizaciones todavía')) : 'Sin actualizaciones todavía');
 function burbujaAgente(id) {
   const a = agentes.find(x => x.id === id); if (!a) return '';
   const t = trabajaHoy(a), u = a.ultimo;
@@ -108,14 +142,23 @@ function burbujaAgente(id) {
       const cambio = d == null ? '<em class="neu">sin dato</em>' : d > 0 ? '<em class="pos">+' + fmt(d) + '</em>' : d < 0 ? '<em class="neg">' + fmt(d) + '</em>' : '<em class="neu">+0</em>';
       return '<div class="bub-red"><svg viewBox="0 0 24 24" width="20" height="20" style="color:' + r.color + '" aria-label="' + r.nombre + '">' + r.icono + '</svg><b>' + (v == null ? '—' : fmt(v)) + '</b>' + cambio + '</div>';
     }).join('') + '</div>';
+  } else if (id === 'ventas-woocommerce') {   // ventas de la tienda: hoy, este mes y la última
+    if (!ventas) cuerpo = '<p class="bub-linea">Cargando ventas…</p>';
+    else if (ventas.error) cuerpo = '<p class="bub-linea">' + esc(ventas.error) + '</p>';
+    else {
+      const fila = (t, x) => '<div class="bub-red"><b>' + t + '</b><em>' + x.n + (x.n === 1 ? ' venta' : ' ventas') + ' · ' + dinero(x.total) + '</em></div>';
+      const u = (ventas.ultimas || [])[0];
+      cuerpo = '<div class="bub-redes">' + fila('Hoy', ventas.hoy) + fila('Este mes', ventas.mes) + '</div>' +
+        (u ? '<p class="bub-linea neu">Última: ' + esc(u.productos.join(', ') || 'Pedido ' + u.id) + ' · ' + dinero(u.total) + (u.fecha ? ' · ' + esc(hace(u.fecha)) : '') + '</p>' : '<p class="bub-linea neu">Todavía no hay ventas este mes.</p>');
+    }
   } else if (id === 'whatsapp') {
     const todos = conversaciones.flatMap(c => c.mensajes), hoy = diaLocal(Date.now());
     const rec = todos.filter(m => m.direccion !== 'salida' && diaLocal(m.fecha) === hoy).length, env = todos.filter(m => m.direccion === 'salida' && diaLocal(m.fecha) === hoy).length;
     cuerpo = '<p class="bub-linea">Hoy: <b>' + rec + '</b> mensajes recibidos, <b>' + env + '</b> enviados, <b>' + resumenCola.pendientes + '</b> en cola.</p>';
   }
-  const pie = u ? 'Última actualización: <b>' + esc(u.fecha) + '</b>' + (u.resultado ? ' · ' + esc(u.resultado) : '') + (u.nota ? '<br>' + esc(u.nota) : '') : 'Todavía no hay actualizaciones.';
+  const pie = u ? (u.fecha ? 'Última actualización: <b>' + esc(u.fecha) + '</b>' + (u.resultado ? ' · ' + esc(u.resultado) : '') + (u.nota ? '<br>' + esc(u.nota) : '') : esc(u.nota || u.resultado || 'Sin actualizaciones todavía.')) : 'Todavía no hay actualizaciones.';
   return '<div class="bub-cab"><b>' + esc(a.nombre) + '</b>' + (a.rol ? '<span>' + esc(a.rol) + '</span>' : '') + '</div>' +
-    '<div class="bub-est ' + (t ? 'on' : '') + '"><i></i>' + (t ? 'Trabajando hoy' : 'Descansando') + '</div>' + cuerpo + '<p class="bub-pie">' + pie + '</p>';
+    '<div class="bub-est ' + (t ? 'on' : '') + '"><i></i>' + (t ? 'Trabajando hoy' : 'Descansando') + '</div>' + cuerpo + (id === 'ventas-woocommerce' && ventas && ventas.error ? '' : '<p class="bub-pie">' + pie + '</p>');   // sin conexión a la tienda el cuerpo ya explica el problema
 }
 function sincronizarMascotas() {
   if (!window.Mascotas) return;

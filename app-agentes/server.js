@@ -397,6 +397,11 @@ const manejar = async (req, res) => {
       } catch (e) { return enviarJSON(res, 502, { error: 'No se pudo enviar: ' + e.message }); }
     }
     const usaIA = !MODO_PUBLICO && !!process.env.ANTHROPIC_API_KEY;   // en línea nunca se gasta la clave de IA
+    if (req.method === 'GET' && url.pathname === '/api/ventas') {   // ventas de WooCommerce (hoy, mes y las últimas)
+      if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra con tu cuenta.' });
+      try { return enviarJSON(res, 200, await require('./woocommerce.js').resumen()); }
+      catch (e) { return enviarJSON(res, require('./woocommerce.js').configurado() ? 502 : 503, { configurado: require('./woocommerce.js').configurado(), error: e.message }); }
+    }
     if (req.method === 'GET' && url.pathname === '/api/agentes') {
       await refrescarAjustesNube();
       const act = await actividadHoy(), hoy = fechaMexico(new Date());
@@ -404,6 +409,11 @@ const manejar = async (req, res) => {
         if (act[resto.id] === hoy && (!resto.ultimo || resto.ultimo.fecha !== hoy)) resto.ultimo = { ...(resto.ultimo || {}), fecha: hoy, resultado: 'OK', nota: 'actividad de hoy en la hoja' };
         return resto;
       });
+      const ventas = agentes.find(a => a.id === 'ventas-woocommerce');   // su "última actualización" sale de la tienda en vivo, no de un archivo
+      if (ventas) {
+        try { const v = await require('./woocommerce.js').resumen(); ventas.ultimo = { fecha: hoy, resultado: 'OK', nota: v.hoy.n + (v.hoy.n === 1 ? ' venta' : ' ventas') + ' hoy · $' + v.hoy.total.toLocaleString('es-MX') }; }
+        catch (e) { ventas.ultimo = { fecha: '', resultado: 'Sin conectar', nota: e.message }; }
+      }
       return enviarJSON(res, 200, { agentes, chatActivo: usaIA, modoPublico: MODO_PUBLICO });
     }
     if (req.method === 'POST' && url.pathname === '/api/ajustes') {

@@ -378,3 +378,7 @@ html.verificando body { visibility: hidden; }
 .adj-doc:hover { background: rgba(0, 0, 0, .2); }
 .adj-nota { display: block; margin-bottom: 6px; font-size: 12px; opacity: .8; font-style: italic; }
 .burbuja-c .txt-c { white-space: pre-wrap; }
+
+#burbuja-masc.sin-cola::after { display: none; }
+#burbuja-masc .bub-linea.neu { color: var(--suave); font-size: 12px; }
+#burbuja-masc .bub-red em { margin-left: auto; padding-left: 14px; }

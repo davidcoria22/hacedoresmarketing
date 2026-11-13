@@ -13,6 +13,7 @@
   let contenidoBurbuja = () => '';
   let abierta = null;                          // id de la mascota con burbuja abierta
   let capa, burbuja, ultimo = 0;
+  let anuncioHasta = 0, relojAnuncio = null;   // aviso temporal (por ejemplo una venta nueva)
 
   const aleatorio = (a, b) => a + Math.random() * (b - a);
   const reducir = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -97,7 +98,7 @@
     const m = mascotas.get(id); if (!m) return;
     abierta = id; burbuja.innerHTML = contenidoBurbuja(id) + '<button type="button" class="bub-x" aria-label="Cerrar">×</button>';
     burbuja.querySelector('.bub-x').addEventListener('click', cerrar);
-    burbuja.hidden = false; burbuja.style.setProperty('--color-masc', m.color);
+    burbuja.hidden = false; burbuja.classList.remove('sin-cola'); burbuja.style.setProperty('--color-masc', m.color);
     ubicarBurbuja(m);
   }
   function cerrar() { abierta = null; if (burbuja) burbuja.hidden = true; }
@@ -204,7 +205,22 @@
         ponerNombre(m, a);
         if (m.color !== a.color) { m.color = a.color; m.el.querySelector('.cuerpo-m').setAttribute('fill', a.color); }
       });
-      if (abierta) abrir(abierta);   // refresca el texto si los datos cambiaron
+      if (abierta && Date.now() > anuncioHasta) abrir(abierta);   // refresca el texto si los datos cambiaron (sin pisar un aviso)
+    },
+    // Aviso temporal de una mascota: salta y muestra su burbuja unos segundos. Si su mascota está oculta, sale como aviso en una esquina.
+    anunciar(id, html, ms = 10000) {
+      iniciarCapa();
+      const m = mascotas.get(id), visible = !!m && !ocultos.has(id);
+      if (visible && m.estado === 'suelo') { m.vy = -700; m.estado = 'aire'; }
+      abierta = visible ? id : null;
+      burbuja.innerHTML = html + '<button type="button" class="bub-x" aria-label="Cerrar">×</button>';
+      burbuja.querySelector('.bub-x').addEventListener('click', cerrar);
+      burbuja.hidden = false; burbuja.style.setProperty('--color-masc', visible ? m.color : '#e72c5e');
+      if (visible) { burbuja.classList.remove('sin-cola'); ubicarBurbuja(m); }
+      else { burbuja.classList.add('sin-cola'); burbuja.style.left = Math.max(8, innerWidth - burbuja.offsetWidth - 20) + 'px'; burbuja.style.top = Math.max(8, innerHeight - burbuja.offsetHeight - 20) + 'px'; }
+      anuncioHasta = Date.now() + ms; clearTimeout(relojAnuncio);
+      relojAnuncio = setTimeout(() => { if (Date.now() >= anuncioHasta - 50) cerrar(); }, ms);
+      return visible;
     },
     preferencias() { return { escala, ocultos: [...ocultos] }; },
     // cambia el tamaño de todas (0.5 a 2.5 veces); los pies se quedan en su lugar para que no floten ni se hundan
