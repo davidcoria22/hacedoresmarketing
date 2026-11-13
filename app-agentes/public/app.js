@@ -1,3 +1,5 @@
+// Colores de cada red en la sección de seguidores del inicio
+const COLOR_SEG = { facebook: '#20a8c1', instagram: '#e72c5e', youtube: '#fcc139', tiktok: '#7858a1', twitter: '#b7cf4b' };
 const REDES = [
   { id: 'instagram', nombre: 'Instagram', color: '#E1306C', icono: '<rect x="3" y="3" width="18" height="18" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17.3" cy="6.7" r="1.2" fill="currentColor"/>' },
   { id: 'facebook', nombre: 'Facebook', color: '#1877F2', icono: '<path d="M14 8h2.5V5H14c-2.5 0-4 1.6-4 4v2H8v3h2v7h3v-7h2.6l.4-3H13V9.5c0-.8.4-1.5 1-1.5z" fill="currentColor"/>' },
@@ -396,7 +398,7 @@ function pintarGraficaInicio() {
 function pintarSeguidoresInicio() {
   const boton = (grupo, id, html, activo, etiqueta) => '<button type="button" class="seg-op ' + (activo ? 'activo' : '') + '" data-grupo="' + grupo + '" data-id="' + id + '"' + (etiqueta ? ' aria-label="' + etiqueta + '" title="' + etiqueta + '"' : '') + ' aria-pressed="' + activo + '">' + html + '</button>';
   $('#ctl-redes').innerHTML = boton('red', 'total', 'Total', ctlSeg.red === 'total') +
-    REDES.map(r => boton('red', r.id, '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">' + r.icono + '</svg>', ctlSeg.red === r.id, r.nombre)).join('');
+    REDES.map(r => boton('red', r.id, '<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" style="color:' + COLOR_SEG[r.id] + '">' + r.icono + '</svg>', ctlSeg.red === r.id, r.nombre).replace('class="seg-op', 'style="' + (ctlSeg.red === r.id ? 'background:#fff;box-shadow:inset 0 0 0 2px ' + COLOR_SEG[r.id] : '') + '" class="seg-op')).join('');
   $('#ctl-rango').innerHTML = RANGOS.map(r => boton('rango', r.id, r.texto, ctlSeg.rango === r.id)).join('');
   $('#ctl-agrupar').innerHTML = AGRUPAR.map(a => boton('agrupar', a.id, a.texto, ctlSeg.agrupar === a.id)).join('');
   // cifra grande: valor más reciente y cambio dentro del periodo elegido
@@ -420,7 +422,7 @@ function pintarBarrasRedes() {
   if (!u) { cont.innerHTML = '<p class="neu">Sin datos de seguidores.</p>'; return; }
   const valores = REDES.map(r => ({ r, v: u[r.id] })).filter(x => x.v != null);
   const max = Math.max(1, ...valores.map(x => x.v));
-  cont.innerHTML = valores.map((x, i) => `<div class="fila-red"><span class="n">${x.r.nombre}</span><div class="r"><div style="width:${Math.max(3, Math.round(x.v / max * 100))}%;background:${i % 2 ? '#e72c5e' : '#2B2B2A'}"></div></div><b>${fmt(x.v)}</b></div>`).join('');
+  cont.innerHTML = valores.map(x => { const col = COLOR_SEG[x.r.id] || '#2B2B2A'; return `<div class="fila-red"><span class="ic-red" style="color:${col}" role="img" aria-label="${x.r.nombre}" title="${x.r.nombre}"><svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">${x.r.icono}</svg></span><div class="r"><div style="width:${Math.max(3, Math.round(x.v / max * 100))}%;background:${col}"></div></div><b>${fmt(x.v)}</b></div>`; }).join('');
   const total = valores.reduce((s, x) => s + x.v, 0);
   $('#grandes').dataset.seguidores = total;
   pintarGrandes();

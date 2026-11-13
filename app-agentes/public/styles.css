@@ -160,7 +160,7 @@ button { font: inherit; color: inherit; }
 
 /* barras por red */
 .fila-red { display: flex; align-items: center; gap: 12px; margin-top: 10px; font-size: 13px; }
-.fila-red .n { width: 84px; color: #4A4944; }
+.fila-red .ic-red { width: 28px; display: grid; place-items: center; flex: none; }
 .fila-red .r { flex: 1; height: 9px; border-radius: 5px; background: rgba(0, 0, 0, .07); }
 .fila-red .r div { height: 9px; border-radius: 5px; }
 .fila-red b { width: 64px; text-align: right; font-weight: 400; }
