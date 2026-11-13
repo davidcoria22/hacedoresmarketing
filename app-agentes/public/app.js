@@ -64,8 +64,16 @@ function irA(vista) {
   if (vista === 'redes') setTimeout(pintarGrafica, 0);   // la gráfica necesita medir su ancho ya visible
   if (vista === 'inicio') setTimeout(pintarGraficaInicio, 0);
   if (vista === 'mensajes') cargarMensajes();
+  mapaSegunVista(vista);
 }
 document.querySelectorAll('.menu button').forEach(b => b.addEventListener('click', () => irA(b.dataset.vista)));
+// Mapa 2D de la sección Agentes: al entrar, los agentes se meten al mapa; al salir, vuelven a caminar por la página
+const infoMapa = (window.Mapa2D && document.getElementById('mapa-2d')) ? Mapa2D.montar(document.getElementById('mapa-2d')) : null;
+function mapaSegunVista(vista) {
+  if (!infoMapa || !window.Mascotas) return;
+  if (vista === 'agentes') setTimeout(() => { if (document.body.dataset.vista === 'agentes') Mascotas.irAlMapa(infoMapa); }, 80);
+  else Mascotas.salirDelMapa();
+}
 document.addEventListener('click', e => { const b = e.target.closest('[data-ir]'); if (b) irA(b.dataset.ir); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarTodo(); });
 

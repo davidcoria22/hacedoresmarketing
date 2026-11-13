@@ -6,7 +6,7 @@
   <title>Panel · Hacedores</title>
   <link rel="icon" type="image/jpeg" href="icono-hacedores.jpg">
   <link rel="apple-touch-icon" href="icono-hacedores.jpg">
-  <link rel="stylesheet" href="styles.css?v=rosa31">
+  <link rel="stylesheet" href="styles.css?v=rosa32">
   <script>document.documentElement.classList.add('verificando')</script>
 </head>
 <body data-vista="inicio">
@@ -97,10 +97,16 @@
           <div class="tit"><h3>Agentes</h3><span class="neu">toca para ver su última actualización</span></div>
           <div id="lista-agentes-panel" class="lista-agentes"></div>
         </section>
-        <section class="tarjeta">
-          <div class="tit"><h3>Últimas ejecuciones</h3></div>
-          <div id="registro"></div>
-        </section>
+        <div class="col-der">
+          <section class="tarjeta">
+            <div class="tit"><h3>Mapa de la oficina</h3><span class="neu">tus agentes trabajan aquí</span></div>
+            <div id="mapa-2d" class="mapa-2d"></div>
+          </section>
+          <section class="tarjeta">
+            <div class="tit"><h3>Últimas ejecuciones</h3></div>
+            <div id="registro"></div>
+          </section>
+        </div>
       </div>
     </main>
     </div>
@@ -111,7 +117,8 @@
     <section class="conv" id="conv" role="dialog" aria-modal="true" aria-label="Conversación"></section>
   </div>
 
-  <script src="mascotas.js?v=rosa31"></script>
-  <script src="app.js?v=rosa31"></script>
+  <script src="mapa2d.js?v=rosa32"></script>
+  <script src="mascotas.js?v=rosa32"></script>
+  <script src="app.js?v=rosa32"></script>
 </body>
 </html>

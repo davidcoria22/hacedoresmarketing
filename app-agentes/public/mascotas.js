@@ -55,6 +55,64 @@
     m.el.classList.remove('imprimiendo'); const d = m.el.querySelector('.impresora'); if (d) d.remove();
   }
 
+  // ---------- mapa 2D: al entrar a la sección Agentes todos se meten al mapa y caminan por la oficina ----------
+  let mapa = null, vecinos = {}; const ocupadas = new Set();
+  const aPantalla = (px, py) => {
+    const r = mapa.el.getBoundingClientRect(), vb = mapa.vb, k = Math.min(r.width / vb.w, r.height / vb.h);
+    return { x: r.left + (r.width - vb.w * k) / 2 + (px - vb.x) * k, y: r.top + (r.height - vb.h * k) / 2 + (py - vb.y) * k, k, ok: r.width > 40 };
+  };
+  const escalaMapa = k => Math.max(.22, Math.min(.6, (k * 40) / ANCHO));   // en el mapa miden ~40 px del plano (≈ 1.2 m)
+  function rutaA(desde, hasta) {   // camino más corto entre dos nodos del mapa
+    const prev = { [desde]: null }, cola = [desde];
+    while (cola.length) { const u = cola.shift(); if (u === hasta) break; for (const v of vecinos[u] || []) if (!(v in prev)) { prev[v] = u; cola.push(v); } }
+    if (!(hasta in prev)) return [];
+    const ruta = []; for (let n = hasta; n !== desde; n = prev[n]) ruta.unshift(n);
+    return ruta;
+  }
+  function iniciarEntrada(m, i) { if (mapa && !ocultos.has(m.id) && m.estado !== 'mapa' && m.estado !== 'hacia-mapa') m.entraEn = performance.now() + i * 140; }
+  function comenzarVuelo(m) {
+    if (m.imprimiendo) terminarImpresion(m);
+    const usados = new Set(); mascotas.forEach(o => { if ((o.estado === 'mapa' || o.estado === 'hacia-mapa') && o.nodo) usados.add(o.nodo); });
+    const libres = mapa.entradas.filter(n => !usados.has(n));
+    m.nodo = (libres.length ? libres : mapa.entradas)[Math.floor(Math.random() * (libres.length || mapa.entradas.length))];
+    m.entraEn = 0; m.estado = 'hacia-mapa'; m.vx = m.vy = 0; m.sentada = null; m.ruta = [];
+    m.t0v = performance.now(); m.durv = 950; m.esc0 = m.esc; m.fx0 = m.x + ANCHO * m.esc / 2; m.fy0 = m.y + ALTO * m.esc;
+    m.el.classList.add('en-mapa'); m.el.classList.remove('agarrada');
+  }
+  function colocar(m, fx, fy) { m.x = fx - ANCHO * m.esc / 2; m.y = fy - ALTO * m.esc; }   // (fx, fy) = donde pisan los pies
+  function elegirDestino(m) {
+    const libres = mapa.sillas.filter(id => !ocupadas.has(id));
+    let destino;
+    if (libres.length && Math.random() < .45) { destino = libres[Math.floor(Math.random() * libres.length)]; m.sentada = destino; ocupadas.add(destino); }   // va a trabajar a un escritorio
+    else { const otros = Object.keys(mapa.nodos).filter(id => !mapa.sillas.includes(id) && id !== m.nodo); destino = otros[Math.floor(Math.random() * otros.length)]; }
+    m.ruta = rutaA(m.nodo, destino);
+    if (!m.ruta.length) { m.espera = 1; if (m.sentada) { ocupadas.delete(m.sentada); m.sentada = null; } }
+  }
+  function pasoMapa(m, dt) {
+    const ahora = performance.now();
+    if (m.estado === 'hacia-mapa') {   // vuelo desde donde estaba hasta su lugar en el mapa
+      const [nx, ny] = mapa.nodos[m.nodo], d = aPantalla(nx, ny);
+      const u = Math.min(1, (ahora - m.t0v) / m.durv), e = u * u * (3 - 2 * u);
+      m.esc = m.esc0 + (escalaMapa(d.k) - m.esc0) * e;
+      colocar(m, m.fx0 + (d.x - m.fx0) * e, m.fy0 + (d.y - m.fy0) * e - Math.sin(Math.PI * u) * 90);
+      if (u >= 1) { m.estado = 'mapa'; m.mx = nx; m.my = ny; m.ruta = []; m.espera = aleatorio(.3, 1.5); }
+      return false;
+    }
+    const base = aPantalla(0, 0); m.esc = escalaMapa(base.k);
+    const quieta = abierta === m.id || reducir() || !base.ok;
+    let camina = false;
+    if (!quieta) {
+      if (m.espera > 0) m.espera -= dt;
+      else if (m.ruta.length) {
+        const [tx, ty] = mapa.nodos[m.ruta[0]], dx = tx - m.mx, dy = ty - m.my, dist = Math.hypot(dx, dy), avance = 46 * dt;
+        if (dist <= avance) { m.mx = tx; m.my = ty; m.nodo = m.ruta.shift(); if (!m.ruta.length) m.espera = m.sentada ? aleatorio(8, 18) : aleatorio(1.2, 4); }
+        else { m.mx += dx / dist * avance; m.my += dy / dist * avance; camina = true; }
+      } else { if (m.sentada) { ocupadas.delete(m.sentada); m.sentada = null; } elegirDestino(m); }
+    }
+    const p = aPantalla(m.mx, m.my); colocar(m, p.x, p.y);
+    return camina;
+  }
+
   function iniciarCapa() {
     if (capa) return;
     capa = document.createElement('div'); capa.id = 'capa-masc'; document.body.appendChild(capa);
@@ -70,7 +128,7 @@
     el.className = 'masc'; el.tabIndex = 0; el.setAttribute('role', 'button');
     el.innerHTML = `<span class="nombre-masc"></span>${dibujo(color)}`;
     capa.appendChild(el);
-    const m = { id: a.id, el, x: aleatorio(20, Math.max(40, innerWidth - ANCHO - 20)), y: -ALTO - aleatorio(0, 160), vx: 0, vy: 0, estado: 'aire', dir: Math.random() < .5 ? -1 : 1, pausa: 0, salto: aleatorio(2, 6), plat: null, color, imp: aleatorio(8, 25), imprimiendo: 0 };
+    const m = { id: a.id, el, x: aleatorio(20, Math.max(40, innerWidth - ANCHO - 20)), y: -ALTO - aleatorio(0, 160), vx: 0, vy: 0, estado: 'aire', dir: Math.random() < .5 ? -1 : 1, pausa: 0, salto: aleatorio(2, 6), plat: null, color, imp: aleatorio(8, 25), imprimiendo: 0, esc: 1, entraEn: 0 };
     ponerNombre(m, a);
     el.addEventListener('pointerdown', e => agarrar(m, e));
     el.addEventListener('pointermove', e => mover(m, e));
@@ -78,6 +136,7 @@
     el.addEventListener('pointercancel', e => soltar(m, e, true));
     el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); alternar(m.id); } });
     mascotas.set(a.id, m);
+    if (mapa) iniciarEntrada(m, mascotas.size);
     aplicarMedidas(m); aplicarVisibilidad(m);
     return m;
   }
@@ -90,6 +149,7 @@
   function agarrar(m, e) {
     if (e.button !== undefined && e.button !== 0) return;
     e.preventDefault();
+    if (mapa && (m.estado === 'mapa' || m.estado === 'hacia-mapa')) { alternar(m.id); return; }   // dentro del mapa solo se puede tocar para ver su burbuja
     try { m.el.setPointerCapture(e.pointerId); } catch { /* sin captura: el arrastre sigue por los eventos del propio elemento */ }
     m.estado = 'arrastre'; m.dx = e.clientX - m.x; m.dy = e.clientY - m.y;
     m.hist = [{ t: performance.now(), x: e.clientX, y: e.clientY }]; m.t0 = performance.now(); m.recorrido = 0; m.vx = m.vy = 0;
@@ -129,10 +189,11 @@
   function cerrar() { abierta = null; if (burbuja) burbuja.hidden = true; }
   function ubicarBurbuja(m) {
     const bw = burbuja.offsetWidth, bh = burbuja.offsetHeight;
-    const centro = m.x + ANCHO / 2;
+    const rm = m.el.getBoundingClientRect();   // sirve igual afuera y dentro del mapa (donde la mascota es más chica)
+    const centro = rm.left + rm.width / 2;
     let izq = Math.min(Math.max(8, centro - bw / 2), innerWidth - bw - 8);
-    let arriba = m.y - bh - 14, abajo = false;
-    if (arriba < 8) { arriba = m.y + ALTO + 14; abajo = true; }
+    let arriba = rm.top - bh - 14, abajo = false;
+    if (arriba < 8) { arriba = rm.bottom + 14; abajo = true; }
     burbuja.style.left = izq + 'px'; burbuja.style.top = arriba + 'px';
     burbuja.style.setProperty('--cola', Math.min(Math.max(16, centro - izq), bw - 16) + 'px');
     burbuja.classList.toggle('abajo', abajo);
@@ -171,6 +232,17 @@
     mascotas.forEach(m => {
       if (ocultos.has(m.id)) { if (m.imprimiendo) terminarImpresion(m); return; }
       if (m.imprimiendo && (m.estado !== 'suelo' || performance.now() >= m.imprimiendo)) terminarImpresion(m);
+      if (m.entraEn && mapa && m.estado !== 'arrastre' && performance.now() >= m.entraEn) comenzarVuelo(m);
+      if (m.estado === 'hacia-mapa' || m.estado === 'mapa') {
+        if (!mapa) { m.estado = 'aire'; m.vx = m.vy = 0; }
+        else {
+          const camina = pasoMapa(m, dt);
+          m.el.classList.toggle('caminando', camina); m.el.classList.remove('en-aire');
+          m.el.style.transform = `translate3d(${m.x.toFixed(1)}px, ${m.y.toFixed(1)}px, 0) scale(${m.esc.toFixed(3)})`;
+          return;
+        }
+      }
+      if (m.esc !== 1) { m.esc += (1 - m.esc) * Math.min(1, dt * 7); if (Math.abs(1 - m.esc) < .015) { m.esc = 1; m.el.classList.remove('en-mapa'); } }
       if (m.estado === 'aire') {
         const pieAntes = m.y + ALTO;
         m.vy += GRAVEDAD * dt; m.x += m.vx * dt; m.y += m.vy * dt;
@@ -213,7 +285,7 @@
       const caminando = m.estado === 'suelo' && m.pausa <= 0 && abierta !== m.id;
       m.el.classList.toggle('caminando', caminando);
       m.el.classList.toggle('en-aire', m.estado === 'aire');
-      m.el.style.transform = `translate3d(${m.x.toFixed(1)}px, ${m.y.toFixed(1)}px, 0)`;
+      m.el.style.transform = `translate3d(${m.x.toFixed(1)}px, ${m.y.toFixed(1)}px, 0)${m.esc !== 1 ? ` scale(${m.esc.toFixed(3)})` : ''}`;
     });
     if (abierta) { const m = mascotas.get(abierta); if (m) ubicarBurbuja(m); else cerrar(); }
     requestAnimationFrame(paso);
@@ -251,6 +323,21 @@
     },
     // Hace que una mascota (o todas, sin id) saque la impresora 3D ahora mismo
     imprimir(id) { mascotas.forEach(m => { if (id === undefined || m.id === id) iniciarImpresion(m); }); },
+    // Mapa 2D: todos los agentes se meten al mapa (info viene de Mapa2D.montar) y se quedan trabajando ahí
+    irAlMapa(info) {
+      iniciarCapa(); mapa = info; vecinos = {};
+      info.aristas.forEach(([a, b]) => { (vecinos[a] ||= []).push(b); (vecinos[b] ||= []).push(a); });
+      ocupadas.clear(); [...mascotas.values()].forEach(m => { if (m.estado === 'mapa' && m.sentada) ocupadas.add(m.sentada); });
+      let i = 0; mascotas.forEach(m => iniciarEntrada(m, i++));
+    },
+    // Al salir de la sección, los agentes salen del mapa de un salto y vuelven a caminar por la página
+    salirDelMapa() {
+      mapa = null; ocupadas.clear();
+      mascotas.forEach(m => {
+        m.entraEn = 0;
+        if (m.estado === 'mapa' || m.estado === 'hacia-mapa') { m.estado = 'aire'; m.vx = aleatorio(-220, 220); m.vy = -aleatorio(500, 800); m.sentada = null; }
+      });
+    },
     preferencias() { return { escala, ocultos: [...ocultos] }; },
     // cambia el tamaño de todas (0.5 a 2.5 veces); los pies se quedan en su lugar para que no floten ni se hundan
     cambiarEscala(v) {
@@ -261,7 +348,7 @@
     },
     mostrarAgente(id, visible) {
       if (visible) ocultos.delete(id); else ocultos.add(id);
-      const m = mascotas.get(id); if (m) { aplicarVisibilidad(m); if (visible) { m.estado = 'aire'; m.vy = 0; m.y = Math.min(m.y, 40); } }
+      const m = mascotas.get(id); if (m) { aplicarVisibilidad(m); if (visible) { m.estado = 'aire'; m.vy = 0; m.y = Math.min(m.y, 40); m.esc = 1; iniciarEntrada(m, 0); } }
       guardarPrefs();
     },
     mostrar(id) { const m = mascotas.get(id); if (!m || ocultos.has(id)) return; if (m.estado === 'suelo') { m.vy = -650; m.estado = 'aire'; } abrir(id); },

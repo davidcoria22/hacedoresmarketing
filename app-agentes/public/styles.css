@@ -296,7 +296,7 @@ th { color: var(--suave); font-weight: 500; font-size: 11px; text-transform: upp
 
 /* ---------- Mascotas (los agentes caminando por el panel) ---------- */
 #capa-masc { position: fixed; inset: 0; z-index: 30; pointer-events: none; overflow: hidden; }
-.masc { position: absolute; left: 0; top: 0; width: 74px; height: 50px; pointer-events: auto; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; will-change: transform; outline: none; }
+.masc { transform-origin: 0 0; position: absolute; left: 0; top: 0; width: 74px; height: 50px; pointer-events: auto; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; will-change: transform; outline: none; }
 .masc.agarrada { cursor: grabbing; }
 .masc:focus-visible svg { filter: drop-shadow(0 0 0 #fff) drop-shadow(0 0 3px var(--rosa)); }
 .masc svg { display: block; overflow: visible; filter: drop-shadow(0 6px 5px rgba(60, 30, 40, .18)); transform-origin: 50% 100%; }
@@ -459,3 +459,10 @@ label.chico { font-size: 12px; color: var(--suave); }
 .chip-ca { border: 0; border-radius: 999px; padding: 5px 12px; background: var(--fondo); font-size: 12.5px; cursor: pointer; }
 .chip-ca:hover, .chip-ca.on { background: var(--rosa-suave); color: var(--rosa); }
 .resultado-ca { background: #EAF5EC; border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 8px; } .resultado-ca p { margin: 0; font-size: 13px; }
+
+/* Mapa 2D de la oficina (sección Agentes) */
+.col-der { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.mapa-2d { background: #fff; border-radius: 22px; padding: 10px; }
+.mapa-2d svg { display: block; width: 100%; height: auto; max-height: 560px; }
+.masc.en-mapa .nombre-masc { display: none; }
+.masc.en-mapa { cursor: pointer; }
