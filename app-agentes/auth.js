@@ -19,7 +19,23 @@ function cookies(req) {
   return o;
 }
 
+// ---- Inicio de sesión con Google: la sesión es una cookie con el correo, firmada con HMAC (ver google-login.js) ----
+const googleActivo = () => !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+const secretoGoogle = () => crypto.createHash('sha256').update('hacedores-google:' + (process.env.AUTH_SECRET || process.env.GOOGLE_CLIENT_SECRET || '')).digest();
+const firmarGoogle = t => crypto.createHmac('sha256', secretoGoogle()).update(t).digest('hex');
+function usuarioGoogle(req) {
+  const [cuerpo, firma] = String(cookies(req).gsesion || '').split('.');
+  if (!cuerpo || !firma || !googleActivo() || !iguales(firma, firmarGoogle(cuerpo))) return null;
+  try { const d = JSON.parse(Buffer.from(cuerpo, 'base64url').toString('utf8')); return d.x > Date.now() && d.e ? { email: d.e, nombre: d.n || '' } : null; } catch { return null; }
+}
+function cookieGoogle(email, nombre, seguro) {
+  const cuerpo = Buffer.from(JSON.stringify({ e: email, n: String(nombre).slice(0, 80), x: Date.now() + DURACION })).toString('base64url');
+  return 'gsesion=' + cuerpo + '.' + firmarGoogle(cuerpo) + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + DURACION / 1000 + (seguro ? '; Secure' : '');
+}
+const cookieGoogleBorrar = seguro => 'gsesion=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0' + (seguro ? '; Secure' : '');
+
 function sesionValida(req) {
+  if (googleActivo()) return !!usuarioGoogle(req);   // con Google activo, solo vale la sesión de Google
   if (!configurada()) return false;
   const [exp, firma] = String(cookies(req)[NOMBRE] || '').split('.');
   return !!(exp && firma && Number(exp) > Date.now() && iguales(firma, firmar(exp)));
@@ -46,4 +62,4 @@ function bloqueado(ip) {
 }
 const anotarFallo = ip => fallos.set(ip, [...(fallos.get(ip) || []), Date.now()]);
 
-module.exports = { configurada, sesionValida, passwordCorrecta, cookieSesion, cookieBorrar, bloqueado, anotarFallo };
+module.exports = { googleActivo, usuarioGoogle, cookieGoogle, cookieGoogleBorrar, configurada, sesionValida, passwordCorrecta, cookieSesion, cookieBorrar, bloqueado, anotarFallo };

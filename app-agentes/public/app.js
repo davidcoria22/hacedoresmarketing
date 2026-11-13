@@ -1,3 +1,25 @@
+// ---- acceso con Google: la página se muestra solo si hay sesión; si no, va a la pantalla de entrada ----
+(function () {
+  const nativo = window.fetch.bind(window);
+  window.fetch = async (...args) => {   // cualquier consulta que vuelva con "hay que entrar" manda a la pantalla de entrada
+    const r = await nativo(...args);
+    const login = r.status === 401 && r.headers.get('X-Login');
+    if (login) location.replace(login);
+    return r;
+  };
+  const listo = () => document.documentElement.classList.remove('verificando');
+  nativo('/api/yo').then(async r => {
+    if (r.status === 401) { location.replace('/entrar.html'); return; }
+    const j = await r.json().catch(() => ({}));
+    listo();
+    if (j.google) {
+      const quien = document.getElementById('estado-sistema'); if (quien) quien.textContent = j.email;
+      const salir = document.getElementById('btn-salir-google');
+      if (salir) { salir.hidden = false; salir.addEventListener('click', async () => { await nativo('/api/logout', { method: 'POST' }); location.replace('/entrar.html'); }); }
+    }
+  }).catch(listo);   // si no hay conexión con el servidor no se deja la pantalla en blanco
+})();
+
 // Colores de cada red en la sección de seguidores del inicio
 const COLOR_SEG = { facebook: '#20a8c1', instagram: '#e72c5e', youtube: '#fcc139', tiktok: '#7858a1', twitter: '#b7cf4b' };
 const REDES = [

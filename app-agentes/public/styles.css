@@ -362,3 +362,7 @@ th { color: var(--suave); font-weight: 500; font-size: 11px; text-transform: upp
 .mini-etqs { display: flex; flex-wrap: wrap; gap: 4px; width: 100%; padding-left: 40px; margin-top: -2px; }
 .mini-etq { font-style: normal; font-size: 10.5px; line-height: 1; padding: 3px 8px; border-radius: 999px; background: #444441; color: #D3D1C7; }
 .mini-etq.ok { background: rgba(231, 44, 94, .22); color: #ffb3c6; }
+
+/* mientras se comprueba la sesión no se muestra nada (evita ver el panel un instante antes de ir a la pantalla de entrada) */
+html.verificando body { visibility: hidden; }
+.cab-acc { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }

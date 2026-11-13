@@ -348,10 +348,17 @@ const manejar = async (req, res) => {
     if (await require('./meta-mensajes.js').manejarMeta(req, res, url)) return;
     // ---- contraseña y mensajes de clientes (sección privada) ----
     const auth = require('./auth.js');
+    if (await require('./google-login.js').manejarGoogle(req, res, url, { modoPublico: MODO_PUBLICO })) return;
+    // En línea con Google activo, todo lo demás de /api exige haber entrado con una cuenta autorizada (los avisos de Meta y el reloj se atienden arriba con su propia clave)
+    if (MODO_PUBLICO && auth.googleActivo() && url.pathname.startsWith('/api/') && url.pathname !== '/api/logout' && !auth.sesionValida(req)) {
+      res.setHeader('X-Login', '/entrar.html');
+      return enviarJSON(res, 401, { requiereLogin: true, login: '/entrar.html', error: 'Entra con tu cuenta de Google.' });
+    }
     const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
     const https_ = (req.headers['x-forwarded-proto'] || '') === 'https';
     if (req.method === 'POST' && url.pathname === '/api/login') {
       if (!MODO_PUBLICO) return enviarJSON(res, 200, { ok: true, local: true });
+      if (auth.googleActivo()) return enviarJSON(res, 403, { error: 'El acceso es con cuenta de Google.' });
       if (!auth.configurada()) return enviarJSON(res, 503, { error: 'La contraseña del panel todavía no está configurada.' });
       if (auth.bloqueado(ip)) return enviarJSON(res, 429, { error: 'Demasiados intentos. Espera un minuto.' });
       const { password } = await leerCuerpo(req);
@@ -360,7 +367,7 @@ const manejar = async (req, res) => {
       return enviarJSON(res, 200, { ok: true });
     }
     if (req.method === 'POST' && url.pathname === '/api/logout') {
-      res.setHeader('Set-Cookie', auth.cookieBorrar(https_));
+      res.setHeader('Set-Cookie', [auth.cookieBorrar(https_), auth.cookieGoogleBorrar(https_)]);
       return enviarJSON(res, 200, { ok: true });
     }
     if (req.method === 'GET' && url.pathname === '/api/mensajes') {
