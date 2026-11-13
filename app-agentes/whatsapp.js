@@ -15,8 +15,8 @@ function elegirAnuncio(m) {
 }
 const textosDe = a => ({ mensaje: leerTexto(a?.mensaje || 'mensaje.txt'), seguimiento: leerTexto(a?.seguimiento || 'mensaje-seguimiento.txt') });
 const anuncioPorId = id => listaAnuncios().find(a => a.id === id) || null;
-// Horas para el seguimiento si la persona no responde (0 = sin seguimiento). Es menor a 24 porque pasadas 24 h WhatsApp solo permite plantillas aprobadas.
-const horasSeguimiento = () => (process.env.WHATSAPP_SEGUIMIENTO_HORAS !== undefined && Number(process.env.WHATSAPP_SEGUIMIENTO_HORAS) >= 0 ? Number(process.env.WHATSAPP_SEGUIMIENTO_HORAS) : 23);
+// Horas para el seguimiento si la persona no responde (0 = sin seguimiento; por defecto 2). Debe ser menor a 24: pasadas 24 h WhatsApp solo permite plantillas aprobadas.
+const horasSeguimiento = () => (process.env.WHATSAPP_SEGUIMIENTO_HORAS !== undefined && Number(process.env.WHATSAPP_SEGUIMIENTO_HORAS) >= 0 ? Number(process.env.WHATSAPP_SEGUIMIENTO_HORAS) : 2);
 
 function leerCrudo(req) {
   return new Promise(resolve => {
