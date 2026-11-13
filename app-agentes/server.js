@@ -374,6 +374,15 @@ const manejar = async (req, res) => {
       }
       catch (e) { return enviarJSON(res, 502, { error: 'No se pudieron leer los mensajes: ' + e.message }); }
     }
+    if (req.method === 'POST' && url.pathname === '/api/responder') {   // contestar un WhatsApp desde el panel
+      if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra con la contraseña del panel.' });
+      if (req.headers['x-panel'] !== '1') return enviarJSON(res, 403, { error: 'Solicitud no válida.' });   // cabecera propia: otras páginas web no pueden mandarla (el navegador las bloquea)
+      const { ref, texto } = await leerCuerpo(req);
+      try {
+        const r = await require('./whatsapp.js').responderDesdePanel(ref, texto);
+        return enviarJSON(res, r.codigo || 200, r.ok ? { ok: true } : { error: r.error });
+      } catch (e) { return enviarJSON(res, 502, { error: 'No se pudo enviar: ' + e.message }); }
+    }
     const usaIA = !MODO_PUBLICO && !!process.env.ANTHROPIC_API_KEY;   // en línea nunca se gasta la clave de IA
     if (req.method === 'GET' && url.pathname === '/api/agentes') {
       await refrescarAjustesNube();

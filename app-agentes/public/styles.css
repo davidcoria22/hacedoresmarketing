@@ -136,6 +136,19 @@ button { font: inherit; color: inherit; }
 .burbuja-c.cli { background: #444441; align-self: flex-start; border-bottom-left-radius: 4px; }
 .burbuja-c.ag { background: #fff; color: var(--texto); align-self: flex-end; border-bottom-right-radius: 4px; }
 .burbuja-c.yo { background: var(--rosa); align-self: flex-end; border-bottom-right-radius: 4px; }
+.resp { border-top: .5px solid #444441; padding-top: 12px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px; }
+.resp-texto { width: 100%; resize: none; border: 0; border-radius: 18px; background: #3a3a38; color: #fff; font: inherit; font-size: 14px; padding: 10px 14px; }
+.resp-texto::placeholder { color: #B4B2A9; }
+.resp-texto:focus { outline: 2px solid var(--rosa); }
+.resp-pie, .resp-conf { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.resp-pie { justify-content: space-between; }
+.resp-conf { font-size: 13px; color: #D3D1C7; }
+.resp-conf span { flex: 1; min-width: 180px; }
+.resp-error { color: #ffb0a5; font-size: 12px; min-height: 14px; }
+.resp button { border: 0; border-radius: 999px; padding: 8px 18px; font-size: 13px; cursor: pointer; background: #444441; color: #fff; }
+.resp .resp-enviar, .resp .resp-ok { background: var(--rosa); }
+.resp button:disabled { opacity: .5; cursor: default; }
+.resp-nota { margin: 0 0 12px; padding-top: 12px; border-top: .5px solid #444441; font-size: 12px; color: #B4B2A9; }
 .leyenda { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: #B4B2A9; border-top: .5px solid #444441; padding-top: 10px; }
 .leyenda span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
 .leyenda .l1::before { background: #444441; } .leyenda .l2::before { background: #fff; } .leyenda .l3::before { background: var(--rosa); }

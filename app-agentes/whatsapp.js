@@ -30,12 +30,31 @@ async function enviarTexto(para, texto) {
     headers: { 'Authorization': 'Bearer ' + process.env.WHATSAPP_TOKEN, 'Content-Type': 'application/json' },
     body: JSON.stringify({ messaging_product: 'whatsapp', to: para, type: 'text', text: { body: texto, preview_url: true } })
   });
-  if (!r.ok) throw new Error('WhatsApp ' + r.status + ' ' + (await r.text()).slice(0, 200));
+  const cuerpo = await r.text();
+  if (!r.ok) throw new Error('WhatsApp ' + r.status + ' ' + cuerpo.slice(0, 200));
+  try { return JSON.parse(cuerpo).messages?.[0]?.id || ''; } catch { return ''; }   // id del mensaje enviado
+}
+
+// Respuesta escrita por una persona desde el panel. Devuelve { ok } o { error, codigo }.
+async function responderDesdePanel(ref, texto) {
+  texto = String(texto || '').trim();
+  if (!texto) return { codigo: 400, error: 'Escribe un mensaje.' };
+  if (texto.length > 1000) return { codigo: 400, error: 'El mensaje es muy largo (máximo 1000 caracteres).' };
+  if (!process.env.WHATSAPP_TOKEN || !process.env.WHATSAPP_PHONE_ID) return { codigo: 503, error: 'Faltan las credenciales de WhatsApp en este servidor.' };
+  const c = await require('./mensajes.js').buscarContacto(ref);
+  if (!c) return { codigo: 404, error: 'No tengo el número de esta conversación (es anterior a esta función). Responde desde la app de WhatsApp.' };
+  if (Date.now() - c.ultimaEntrada > 24 * 3600000) return { codigo: 409, error: 'Pasaron más de 24 horas desde su último mensaje. WhatsApp solo permite plantillas aprobadas.' };
+  let id;
+  try { id = await enviarTexto(c.numero, texto); }
+  catch (e) { console.error('responder:', e.message); return { codigo: 502, error: 'WhatsApp no aceptó el mensaje: ' + String(e.message).replace(/^WhatsApp \d+ /, '').slice(0, 160) }; }
+  await anotarSalida(id || 'panel:' + Date.now(), c.numero, texto, 'manual');   // queda en la conversación como respuesta tuya
+  if (process.env.WHATSAPP_CRON_SECRET) { try { await require('./pendientes.js').cancelarSeguimientos([c.numero]); } catch { /* sin cola */ } }   // si una persona ya conversa, no sale el seguimiento automático
+  return { ok: true };
 }
 
 // Anota en la hoja un mensaje que mandó el agente (para ver la conversación completa). Si falla no afecta al envío.
-async function anotarSalida(id, numero, texto) {
-  try { await require('./mensajes.js').guardarMensajes([{ id, red: 'whatsapp', nombre: '', numero, tipo: 'text', texto, origen: 'agente', respuesta: 'enviada', direccion: 'salida' }]); }
+async function anotarSalida(id, numero, texto, origen = 'agente') {
+  try { await require('./mensajes.js').guardarMensajes([{ id, red: 'whatsapp', nombre: '', numero, tipo: 'text', texto, origen, respuesta: 'enviada', direccion: 'salida' }]); }
   catch (err) { console.error('mensajes: no se pudo anotar el envío:', err.message); }
 }
 
@@ -138,4 +157,4 @@ async function manejarWhatsApp(req, res, url) {
   return fin(200, 'ok'), true;
 }
 
-module.exports = { manejarWhatsApp };
+module.exports = { manejarWhatsApp, responderDesdePanel };

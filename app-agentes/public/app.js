@@ -441,11 +441,17 @@ const hora = f => { const t = new Date(f); return isNaN(t) ? '' : t.toLocaleStri
 // Agrupa los mensajes (de todos los sentidos) por persona y red
 function armarConversaciones(lista) {
   const mapa = new Map();
+  // El mismo teléfono tapado puede ser de dos personas: si hay referencia (ref) se separa por ella.
+  // Los mensajes viejos no tienen ref: se asignan a la única ref de ese teléfono, si es una sola.
+  const refsDeTel = new Map();
+  lista.forEach(m => { if (m.ref) { const s = refsDeTel.get(m.telefono) || new Set(); s.add(m.ref); refsDeTel.set(m.telefono, s); } });
   [...lista].reverse().forEach(m => {   // de más viejo a más nuevo
     if (!RED_MSG[m.red]) return;
-    const clave = m.red + '|' + (m.telefono || m.nombre || '');
+    const unica = !m.ref && refsDeTel.get(m.telefono)?.size === 1 ? [...refsDeTel.get(m.telefono)][0] : '';
+    const ref = m.ref || unica;
+    const clave = m.red + '|' + (ref || m.telefono || m.nombre || '');
     let c = mapa.get(clave);
-    if (!c) { c = { clave, red: m.red, nombre: '', telefono: m.telefono || '', mensajes: [] }; mapa.set(clave, c); }
+    if (!c) { c = { clave, red: m.red, ref, nombre: '', telefono: m.telefono || '', mensajes: [] }; mapa.set(clave, c); }
     if (m.nombre && m.direccion !== 'salida') c.nombre = m.nombre;
     c.mensajes.push(m);
   });
@@ -483,6 +489,8 @@ function pintarConversacion(desplazar) {
   if (!c) { modal.hidden = true; return; }
   modal.hidden = false;
   const r = RED_MSG[c.red];
+  const previo = cont.querySelector('.resp-texto');   // si ya estabas escribiendo, no se pierde al refrescar
+  const borrador = previo ? previo.value : '', teniaFoco = !!previo && document.activeElement === previo;
   const burbujas = c.mensajes.map(m => {
     const salida = m.direccion === 'salida';
     const cls = !salida ? 'cli' : m.origen === 'manual' ? 'yo' : 'ag';
@@ -494,9 +502,53 @@ function pintarConversacion(desplazar) {
     <div><p>${esc(c.titulo)}</p><p class="s">${r.nombre}${c.nombre && c.telefono ? ' · ' + esc(c.telefono) : ''}</p></div>
     <span class="est ${est[1]}">${est[0]}</span><button class="cerrar-conv" type="button" aria-label="Cerrar conversación">×</button></div>
     <div class="hilo">${burbujas}</div>
+    ${cajaRespuesta(c)}
     <div class="leyenda"><span class="l1">Cliente</span><span class="l2">Agente automático</span><span class="l3">Tú</span></div>`;
   cont.querySelector('.cerrar-conv').addEventListener('click', cerrarConversacion);
   const hilo = cont.querySelector('.hilo'); hilo.scrollTop = hilo.scrollHeight;
+  activarRespuesta(c, borrador, teniaFoco);
+}
+
+// ---------- contestar desde el panel (solo WhatsApp, dentro de las 24 h del último mensaje del cliente) ----------
+function cajaRespuesta(c) {
+  if (c.red !== 'whatsapp') return '<p class="resp-nota">Por ahora solo se puede contestar desde aquí en WhatsApp.</p>';
+  if (!c.ref) return '<p class="resp-nota">Esta conversación es anterior a esta función y no tengo su número completo. Contesta desde la app de WhatsApp.</p>';
+  const ultimo = [...c.mensajes].reverse().find(m => m.direccion !== 'salida');
+  if (!ultimo || Date.now() - new Date(ultimo.fecha) > 24 * 3600000) return '<p class="resp-nota">Pasaron más de 24 horas desde su último mensaje. WhatsApp solo permite plantillas aprobadas, así que no se puede contestar con texto libre.</p>';
+  return `<div class="resp">
+    <textarea class="resp-texto" rows="2" maxlength="1000" placeholder="Escribe tu respuesta…"></textarea>
+    <div class="resp-conf" hidden><span>Se enviará por WhatsApp a <b>${esc(c.titulo)}</b>.</span><button type="button" class="resp-ok">Confirmar y enviar</button><button type="button" class="resp-no">Cancelar</button></div>
+    <div class="resp-pie"><span class="resp-error" role="alert"></span><button type="button" class="resp-enviar">Enviar</button></div>
+  </div>`;
+}
+function activarRespuesta(c, borrador, teniaFoco) {
+  const cont = $('#conv');
+  const caja = cont.querySelector('.resp');
+  if (!caja) return;
+  const texto = caja.querySelector('.resp-texto'), conf = caja.querySelector('.resp-conf'), enviar = caja.querySelector('.resp-enviar'), error = caja.querySelector('.resp-error');
+  texto.value = borrador;
+  if (teniaFoco) texto.focus();
+  const ocupado = si => { caja.querySelectorAll('button, textarea').forEach(e => { e.disabled = si; }); };
+  enviar.addEventListener('click', () => {
+    error.textContent = '';
+    if (!texto.value.trim()) { error.textContent = 'Escribe un mensaje primero.'; return; }
+    conf.hidden = false; enviar.hidden = true;   // segundo paso: confirmar, para no mandar nada por accidente
+  });
+  caja.querySelector('.resp-no').addEventListener('click', () => { conf.hidden = true; enviar.hidden = false; });
+  caja.querySelector('.resp-ok').addEventListener('click', async () => {
+    ocupado(true); error.textContent = 'Enviando…';
+    try {
+      const r = await fetch('/api/responder', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-panel': '1' }, body: JSON.stringify({ ref: c.ref, texto: texto.value }) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        ocupado(false); conf.hidden = true; enviar.hidden = false;
+        error.textContent = r.status === 401 ? 'Tu sesión venció. Entra de nuevo en Mensajes con la contraseña.' : (j.error || 'No se pudo enviar.');
+        return;
+      }
+      texto.value = '';
+      await cargarMensajes();   // vuelve a dibujar la conversación con tu mensaje ya incluido
+    } catch { ocupado(false); conf.hidden = true; enviar.hidden = false; error.textContent = 'Sin conexión con el servidor.'; }
+  });
 }
 // Animación tipo iOS: la ventana crece desde el contacto que tocaste y, al cerrar, regresa a él (FLIP con curva de resorte suave)
 const CURVA_IOS = 'cubic-bezier(.32, .72, 0, 1)';
