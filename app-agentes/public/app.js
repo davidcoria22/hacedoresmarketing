@@ -370,11 +370,12 @@ async function abrirAnuncios() {
 async function abrirMetaAds() {
   const m = document.createElement('div');
   m.className = 'modal-ajustes';
-  m.innerHTML = '<div class="modal-caja caja-anuncios caja-meta"><h3>Anuncios en Meta</h3><div data-cuerpo><p class="neu">Consultando a Meta…</p></div><span class="error-msg" data-aviso></span><div class="botones-aj"><span class="neu" data-tope></span><span style="flex:1"></span><button type="button" class="sec" data-cerrar>Cerrar</button></div></div>';
+  m.innerHTML = '<div class="modal-caja caja-anuncios caja-meta"><h3>Anuncios en Meta</h3><div data-cuerpo><p class="neu">Consultando a Meta…</p></div><span class="error-msg" data-aviso></span><div class="botones-aj"><span class="neu" data-tope></span><span style="flex:1"></span><button type="button" class="sec" data-crear-anuncio>+ Crear anuncio</button><button type="button" class="sec" data-cerrar>Cerrar</button></div></div>';
   document.body.appendChild(m);
   const cerrar = () => m.remove();
   m.addEventListener('mousedown', e => { if (e.target === m) cerrar(); });
   m.querySelector('[data-cerrar]').addEventListener('click', cerrar);
+  m.querySelector('[data-crear-anuncio]').addEventListener('click', () => { cerrar(); abrirCrearAnuncio(); });
   const cuerpo = m.querySelector('[data-cuerpo]');
   const aviso = (t, bien) => { const a = m.querySelector('[data-aviso]'); a.textContent = t || ''; a.style.color = bien ? 'var(--bien)' : ''; };
   const peso = x => x ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: x.moneda || 'MXN', maximumFractionDigits: 2 }).format(x.valor) : '—';
@@ -431,6 +432,87 @@ async function abrirMetaAds() {
     } catch (e) { cuerpo.innerHTML = '<p class="error-msg">' + esc(e.message) + '</p>'; }
   };
   cargar();
+}
+
+// ---------- crear un anuncio nuevo de clic a WhatsApp (siempre se crea pausado) ----------
+async function abrirCrearAnuncio() {
+  const m = document.createElement('div');
+  m.className = 'modal-ajustes';
+  const fecha = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date(Date.now() + 86400000));   // mañana, hora de México
+  m.innerHTML = `<form class="modal-caja caja-anuncios caja-meta"><h3>Crear anuncio</h3>
+    <p class="nota-aj">Se crea <b>pausado</b>: no gasta nada hasta que lo publiques. Es un anuncio de clic a WhatsApp para Facebook e Instagram.</p>
+    <div class="campo">1. Video de tu página <div class="videos-ca" data-videos><p class="neu">Buscando tus videos…</p></div>
+      <label class="chico">O escribe el ID del video <input name="video" inputmode="numeric" placeholder="Solo si no aparece arriba"></label></div>
+    <label>Nombre del anuncio<input name="nombre" maxlength="80" placeholder="Ej. Viernes de Consejo Maker · Chapultepec" required></label>
+    <label>Texto principal <small>(lo que se lee en el anuncio)</small><textarea name="texto" rows="4" maxlength="500" placeholder="Ej. Viernes de Consejo Maker en Hacedores Chapultepec. Tus hijos construyen y aprenden con otros makers. Escríbenos por WhatsApp." required></textarea></label>
+    <label>Título <small>(opcional, máx. 40)</small><input name="titulo" maxlength="40"></label>
+    <div class="campo">2. Para quién
+      <div class="dos-col"><label>Latitud<input name="lat" inputmode="decimal" placeholder="19.4200" required></label><label>Longitud<input name="lng" inputmode="decimal" placeholder="-99.1800" required></label></div>
+      <small>Clic derecho en Google Maps sobre el lugar y copia las coordenadas.</small>
+      <div class="dos-col"><label>Radio (km)<input name="radio" type="number" min="1" max="80" value="5" required></label><label>Edades<span class="par"><input name="edadMin" type="number" min="18" max="65" value="28"><input name="edadMax" type="number" min="18" max="65" value="50"></span></label></div>
+      <label>Intereses <small>(busca, por ejemplo: padres, robótica, educación)</small><input name="buscar-int" placeholder="Escribe y espera un momento"></label>
+      <div class="chips-ca" data-resultados></div><div class="chips-ca sel" data-elegidos></div></div>
+    <div class="campo">3. Presupuesto y fechas
+      <div class="dos-col"><label>Presupuesto diario ($)<input name="presupuesto" type="number" min="1" step="1" required></label><label>Duración (días)<input name="dias" type="number" min="1" max="60" value="7" required></label></div>
+      <label>Fecha de inicio <small>(6:00 a. m. hora de México)</small><input name="inicio" type="date" value="${fecha}" required></label></div>
+    <div class="campo">4. Mensajes automáticos de WhatsApp para este anuncio
+      <label>Palabra clave <small>(debe aparecer en el texto o el título; así el agente sabe de qué anuncio llegó la persona)</small><input name="palabra" maxlength="40" placeholder="Ej. consejo maker" required></label>
+      <label>Mensaje de respuesta<textarea name="respuesta" rows="5" maxlength="1500" required></textarea></label>
+      <label>Mensaje de seguimiento <small>(si no contesta)</small><textarea name="seguimiento" rows="3" maxlength="1500" required></textarea></label></div>
+    <span class="error-msg" data-aviso></span>
+    <div data-resultado></div>
+    <div class="botones-aj"><span class="neu" data-tope></span><span style="flex:1"></span><button type="button" class="sec" data-cerrar>Cerrar</button><button type="submit" data-crear>Crear (pausado)</button></div>
+  </form>`;
+  document.body.appendChild(m);
+  const f = m.querySelector('form'), aviso = (t, bien) => { const a = m.querySelector('[data-aviso]'); a.textContent = t || ''; a.style.color = bien ? 'var(--bien)' : ''; };
+  const cerrar = () => m.remove();
+  m.addEventListener('mousedown', e => { if (e.target === m) cerrar(); });
+  m.querySelector('[data-cerrar]').addEventListener('click', cerrar);
+  const llamar = async (ruta, cuerpo) => {
+    const r = await fetch(ruta, cuerpo ? { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-panel': '1' }, body: JSON.stringify(cuerpo) } : undefined);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'No se pudo completar.');
+    return j;
+  };
+  fetch('/api/meta-ads').then(r => r.json()).then(j => { if (j.tope) { m.querySelector('[data-tope]').textContent = 'Tope por día: $' + j.tope; f.presupuesto.max = j.tope; } }).catch(() => {});
+  let videoElegido = '';
+  llamar('/api/meta-ads/videos').then(({ videos }) => {
+    const c = m.querySelector('[data-videos]');
+    c.innerHTML = videos.length ? videos.map(v => '<label class="video-ca"><input type="radio" name="vid" value="' + esc(v.id) + '"><span class="mini" style="background-image:url(\'' + esc(v.imagen) + '\')"></span><span><b>' + esc(v.titulo) + '</b><small>' + esc((v.fecha || '').slice(0, 10)) + (v.segundos ? ' · ' + v.segundos + ' s' : '') + '</small></span></label>').join('') : '<p class="neu">No encontré videos en tu página. Escribe el ID abajo.</p>';
+    c.querySelectorAll('input[name=vid]').forEach(r => r.addEventListener('change', () => { videoElegido = r.value; f.video.value = ''; }));
+  }).catch(e => { m.querySelector('[data-videos]').innerHTML = '<p class="error-msg">' + esc(e.message) + ' Puedes escribir el ID del video abajo.</p>'; });
+  f.video.addEventListener('input', () => { videoElegido = ''; m.querySelectorAll('input[name=vid]').forEach(r => { r.checked = false; }); });
+  // intereses
+  const elegidos = new Map(); let espera = null;
+  const pintarElegidos = () => { const c = m.querySelector('[data-elegidos]'); c.innerHTML = [...elegidos].map(([id, nombre]) => '<button type="button" class="chip-ca on" data-quitar="' + esc(id) + '">' + esc(nombre) + ' ✕</button>').join(''); c.querySelectorAll('[data-quitar]').forEach(b => b.addEventListener('click', () => { elegidos.delete(b.dataset.quitar); pintarElegidos(); })); };
+  f['buscar-int'].addEventListener('input', () => {
+    clearTimeout(espera); const q = f['buscar-int'].value.trim(); const c = m.querySelector('[data-resultados]');
+    if (q.length < 2) { c.innerHTML = ''; return; }
+    espera = setTimeout(async () => {
+      try { const { intereses } = await llamar('/api/meta-ads/intereses?q=' + encodeURIComponent(q)); c.innerHTML = intereses.map(i => '<button type="button" class="chip-ca" data-id="' + esc(i.id) + '" data-n="' + esc(i.nombre) + '">' + esc(i.nombre) + '</button>').join('') || '<span class="neu">Sin resultados.</span>';
+        c.querySelectorAll('[data-id]').forEach(b => b.addEventListener('click', () => { if (elegidos.size < 10) { elegidos.set(b.dataset.id, b.dataset.n); pintarElegidos(); } })); }
+      catch (e) { c.innerHTML = '<span class="error-msg">' + esc(e.message) + '</span>'; }
+    }, 400);
+  });
+  f.addEventListener('submit', async e => {
+    e.preventDefault(); aviso('');
+    const d = Object.fromEntries(new FormData(f));
+    const video = videoElegido || String(d.video || '').trim();
+    if (!video) { aviso('Elige un video de tu página.'); return; }
+    if (!confirm('Crear el anuncio "' + d.nombre + '" (pausado)?\n\n$' + d.presupuesto + ' al día durante ' + d.dias + ' días, desde el ' + d.inicio + '.\nPúblico: ' + d.radio + ' km a la redonda, ' + d.edadMin + '–' + d.edadMax + ' años.')) return;
+    const b = m.querySelector('[data-crear]'); b.disabled = true; b.textContent = 'Creando…';
+    try {
+      const r = await llamar('/api/meta-ads/crear', { nombre: d.nombre, video, texto: d.texto, titulo: d.titulo, palabra: d['palabra'], respuesta: d.respuesta, seguimiento: d.seguimiento, presupuesto: d.presupuesto, dias: d.dias, inicio: d.inicio, lat: d.lat, lng: d.lng, radio: d.radio, edadMin: d.edadMin, edadMax: d.edadMax, intereses: [...elegidos].map(([id, nombre]) => ({ id, nombre })) });
+      f.querySelectorAll('input, textarea, button[type=submit]').forEach(x => { x.disabled = true; });
+      m.querySelector('[data-resultado]').innerHTML = '<div class="resultado-ca"><b>Listo: "' + esc(r.nombre) + '" quedó creado y pausado.</b><p>Revísalo en el Administrador de anuncios de Meta. Meta puede tardar un rato en aprobarlo.' + (r.mensajes === true ? ' Sus mensajes de WhatsApp ya quedaron guardados.' : ' <span class="error-msg">Pero sus mensajes no se guardaron: ' + esc(String(r.mensajes)) + ' Agrégalos en "Mensajes por anuncio".</span>') + '</p><button type="button" class="sec" data-publicar="' + esc(r.campana) + '">Publicar ahora ($' + esc(String(r.presupuesto)) + ' al día)</button></div>';
+      m.querySelector('[data-publicar]').addEventListener('click', async ev => {
+        if (!confirm('Publicar "' + r.nombre + '"?\nEmpezará a gastar hasta $' + r.presupuesto + ' al día desde la fecha de inicio.')) return;
+        ev.target.disabled = true;
+        try { await llamar('/api/meta-ads/publicar', { campana: ev.target.dataset.publicar }); ev.target.textContent = 'Publicado ✓'; aviso('Publicado. Meta lo revisará antes de mostrarlo.', true); }
+        catch (err) { ev.target.disabled = false; aviso(err.message); }
+      });
+    } catch (err) { b.disabled = false; b.textContent = 'Crear (pausado)'; aviso(err.message); m.querySelector('.error-msg[data-aviso]').scrollIntoView({ block: 'nearest' }); }
+  });
 }
 
 // ---------- último post por red (arriba de la gráfica) ----------

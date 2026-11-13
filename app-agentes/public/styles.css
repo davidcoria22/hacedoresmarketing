@@ -421,3 +421,18 @@ html.verificando body { visibility: hidden; }
 .mini-acc:hover { background: var(--rosa-suave); }
 .mini-acc.peligro:hover { background: var(--rosa); color: #fff; }
 .mini-acc:disabled { opacity: .5; cursor: default; }
+.modal-caja .campo > .dos-col, .dos-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dos-col label { display: flex; flex-direction: column; gap: 5px; }
+.par { display: flex; gap: 6px; } .par input { width: 100%; }
+.campo { font-size: 14px; } .campo > small { color: var(--suave); }
+label.chico { font-size: 12px; color: var(--suave); }
+.videos-ca { display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; }
+.video-ca { display: flex !important; flex-direction: row !important; align-items: center; gap: 10px; background: #FAF8F5; border-radius: 16px; padding: 8px 10px; cursor: pointer; }
+.video-ca:has(input:checked) { outline: 2px solid var(--rosa); }
+.video-ca input { accent-color: var(--rosa); }
+.video-ca .mini { width: 64px; height: 40px; border-radius: 10px; background: var(--fondo) center / cover; flex: none; }
+.video-ca b { font-weight: 400; display: block; } .video-ca small { color: var(--suave); }
+.chips-ca { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip-ca { border: 0; border-radius: 999px; padding: 5px 12px; background: var(--fondo); font-size: 12.5px; cursor: pointer; }
+.chip-ca:hover, .chip-ca.on { background: var(--rosa-suave); color: var(--rosa); }
+.resultado-ca { background: #EAF5EC; border-radius: 18px; padding: 14px; display: flex; flex-direction: column; gap: 8px; } .resultado-ca p { margin: 0; font-size: 13px; }

@@ -411,6 +411,20 @@ const manejar = async (req, res) => {
         return enviarJSON(res, 200, r);
       } catch (e) { return enviarJSON(res, 400, { error: e.message }); }
     }
+    if (url.pathname.startsWith('/api/meta-ads/') && ['/api/meta-ads/videos', '/api/meta-ads/intereses', '/api/meta-ads/crear', '/api/meta-ads/publicar'].includes(url.pathname)) {   // crear anuncios nuevos (siempre pausados)
+      if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra para crear anuncios.' });
+      const C = require('./meta-ads-crear.js');
+      try {
+        if (req.method === 'GET' && url.pathname === '/api/meta-ads/videos') return enviarJSON(res, 200, { videos: await C.videos() });
+        if (req.method === 'GET' && url.pathname === '/api/meta-ads/intereses') return enviarJSON(res, 200, { intereses: await C.intereses(url.searchParams.get('q')) });
+        if (req.method === 'POST' && (url.pathname === '/api/meta-ads/crear' || url.pathname === '/api/meta-ads/publicar')) {
+          if (req.headers['x-panel'] !== '1') return enviarJSON(res, 403, { error: 'Solicitud no válida.' });
+          const cuerpo = await leerCuerpo(req);
+          return enviarJSON(res, 200, url.pathname.endsWith('/crear') ? await C.crear(cuerpo) : await C.publicar(cuerpo.campana));
+        }
+        return enviarJSON(res, 405, { error: 'Método no permitido' });
+      } catch (e) { return enviarJSON(res, 400, { error: e.message }); }
+    }
     if (url.pathname === '/api/anuncios') {   // mensajes automáticos por anuncio (se editan desde el panel)
       if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra para ver los anuncios.' });
       const An = require('./anuncios.js');

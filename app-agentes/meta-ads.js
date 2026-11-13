@@ -1,14 +1,15 @@
-// Anuncios de Facebook e Instagram (Meta Marketing API). Por ahora SOLO LECTURA: muestra cómo van tus campañas.
-// Variables de entorno: META_ADS_TOKEN (usuario del sistema con ads_read), META_ADS_ACCOUNT_ID (act_123… o solo el número),
-// y para más adelante META_PAGE_ID y META_IG_ID. Nunca se devuelve ni se imprime el token.
+// Anuncios de Facebook e Instagram (Meta Marketing API): ver campañas, pausar/reactivar y cambiar presupuesto (con tope).
+// La creación de anuncios nuevos está en meta-ads-crear.js.
+// Variables de entorno: META_ADS_TOKEN (usuario del sistema con ads_read y ads_management), META_ADS_ACCOUNT_ID (act_123… o solo el número),
+// META_PAGE_ID, META_IG_ID y META_WHATSAPP_NUMERO (para crear). Nunca se devuelve ni se imprime el token.
 const API = 'https://graph.facebook.com/v21.0';
 const cuentaId = () => { const v = String(process.env.META_ADS_ACCOUNT_ID || '').trim(); return v ? (v.startsWith('act_') ? v : 'act_' + v.replace(/\D/g, '')) : ''; };
 const configurado = () => !!(process.env.META_ADS_TOKEN && cuentaId());
-const variables = () => ({ META_ADS_TOKEN: !!process.env.META_ADS_TOKEN, META_ADS_ACCOUNT_ID: !!process.env.META_ADS_ACCOUNT_ID, META_PAGE_ID: !!process.env.META_PAGE_ID, META_IG_ID: !!process.env.META_IG_ID });
+const variables = () => ({ META_ADS_TOKEN: !!process.env.META_ADS_TOKEN, META_ADS_ACCOUNT_ID: !!process.env.META_ADS_ACCOUNT_ID, META_PAGE_ID: !!process.env.META_PAGE_ID, META_IG_ID: !!process.env.META_IG_ID, META_WHATSAPP_NUMERO: !!process.env.META_WHATSAPP_NUMERO });
 
-async function graph(ruta, params = {}, metodo = 'GET') {
+async function graph(ruta, params = {}, metodo = 'GET', token = process.env.META_ADS_TOKEN) {
   const q = new URLSearchParams(params);
-  const cab = { Authorization: 'Bearer ' + process.env.META_ADS_TOKEN, Accept: 'application/json', 'User-Agent': 'Hacedores-Panel/1.0' };
+  const cab = { Authorization: 'Bearer ' + token, Accept: 'application/json', 'User-Agent': 'Hacedores-Panel/1.0' };
   const r = metodo === 'GET'
     ? await fetch(API + ruta + '?' + q, { headers: cab, signal: AbortSignal.timeout(15000) })
     : await fetch(API + ruta, { method: 'POST', headers: { ...cab, 'Content-Type': 'application/x-www-form-urlencoded' }, body: q.toString(), signal: AbortSignal.timeout(15000) });
@@ -17,8 +18,8 @@ async function graph(ruta, params = {}, metodo = 'GET') {
     const e = j.error || {};
     const msg = e.code === 190 ? 'Meta rechazó el token (caducó o no es válido). Genera uno nuevo.'
       : (e.code === 200 || e.code === 10 || e.code === 294) ? 'El token no tiene permiso para esta cuenta. Revisa que el usuario del sistema tenga la cuenta publicitaria asignada y los permisos ads_read / ads_management.'
-      : e.code === 100 ? 'Meta no encontró la cuenta publicitaria. Revisa el ID en META_ADS_ACCOUNT_ID.'
-      : 'Meta respondió ' + r.status + (e.message ? ': ' + String(e.message).slice(0, 160) : '.');
+      : (e.code === 100 && ruta === '/' + cuentaId()) ? 'Meta no encontró la cuenta publicitaria. Revisa el ID en META_ADS_ACCOUNT_ID.'
+      : 'Meta respondió ' + r.status + (e.error_user_msg || e.message ? ': ' + String(e.error_user_msg || e.message).slice(0, 300) : '.');
     throw new Error(msg);
   }
   return j;
@@ -117,4 +118,4 @@ async function cambiarPresupuesto(id, pesos) {
   return { ok: true, nombre: o.name, antes: num(o.daily_budget) / 100, ahora: monto };
 }
 
-module.exports = { resumen, diagnostico, configurado, cambiarEstado, cambiarPresupuesto, tope };
+module.exports = { resumen, diagnostico, configurado, cambiarEstado, cambiarPresupuesto, tope, graph, cuentaId, soloId, deLaCuenta, cambioHecho };
