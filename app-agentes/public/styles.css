@@ -407,3 +407,9 @@ html.verificando body { visibility: hidden; }
 .anuncio-cab { display: flex; align-items: center; gap: 8px; font-weight: 400; font-size: 15px; }
 .anuncio-edit textarea, .anuncio-edit input { background: #fff !important; }
 .anuncio-cab .mini-etq.ok { background: var(--rosa-suave); color: var(--rosa); }
+.tabla-meta { display: flex; flex-direction: column; gap: 2px; overflow-x: auto; }
+.fila-meta { display: grid; grid-template-columns: minmax(150px, 2.2fr) 1fr 1fr 1fr 1fr 1fr; gap: 8px; padding: 8px 6px; border-bottom: .5px solid var(--linea); font-size: 13px; min-width: 560px; }
+.fila-meta span:not(:first-child) { text-align: right; }
+.cab-meta { color: var(--suave); font-size: 11.5px; }
+.lista-vars { margin: 0; padding-left: 18px; font-size: 13px; color: var(--suave); }
+.modal-caja .btn-anuncios + .btn-anuncios { margin-top: -6px; }

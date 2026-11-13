@@ -268,7 +268,7 @@ function abrirAjustes(id) {
     </div>
     <label>Notas para el chat <small>(se suman a sus instrucciones cuando hablas con él)</small><textarea name="notas" rows="4" maxlength="1000" placeholder="Ej. Responde siempre con emojis">${esc(a.notas)}</textarea></label>
     ${modoPublico ? '<label>Contraseña del panel <small>(necesaria para guardar en línea)</small><input type="password" name="clave" autocomplete="current-password"></label>' : ''}
-    ${id === 'whatsapp' ? '<button type="button" class="sec btn-anuncios" data-anuncios>Mensajes por anuncio…</button>' : ''}
+    ${id === 'whatsapp' ? '<button type="button" class="sec btn-anuncios" data-anuncios>Mensajes por anuncio…</button><button type="button" class="sec btn-anuncios" data-meta-ads>Anuncios en Meta…</button>' : ''}
     <span class="error-msg" data-aviso></span>
     <p class="nota-aj">Horario actual: ${esc(a.horario)} (se cambia en la tarea programada).</p>
     <div class="botones-aj"><button type="button" class="sec" data-restablecer>Restablecer</button><span style="flex:1"></span><button type="button" class="sec" data-cancelar>Cancelar</button><button type="submit">Guardar</button></div>
@@ -277,6 +277,7 @@ function abrirAjustes(id) {
   const cerrar = () => m.remove();
   m.addEventListener('mousedown', e => { if (e.target === m) cerrar(); });
   m.querySelector('[data-cancelar]').addEventListener('click', cerrar);
+  const bMeta = m.querySelector('[data-meta-ads]'); if (bMeta) bMeta.addEventListener('click', () => { cerrar(); abrirMetaAds(); });
   const bAn = m.querySelector('[data-anuncios]'); if (bAn) bAn.addEventListener('click', () => { cerrar(); abrirAnuncios(); });
   const aviso = t => { m.querySelector('[data-aviso]').textContent = t; };
   const guardar = async cfg => {
@@ -363,6 +364,31 @@ async function abrirAnuncios() {
     enlazar(); const t = m.querySelector('form.anuncio-edit[data-id=""]'); t.scrollIntoView({ block: 'nearest' }); t.querySelector('input[name=nombre]').focus();
   });
   pintar();
+}
+
+// ---------- anuncios de Facebook e Instagram (solo lectura) ----------
+async function abrirMetaAds() {
+  const m = document.createElement('div');
+  m.className = 'modal-ajustes';
+  m.innerHTML = '<div class="modal-caja caja-anuncios"><h3>Anuncios en Meta</h3><div data-cuerpo><p class="neu">Consultando a Meta…</p></div><div class="botones-aj"><span style="flex:1"></span><button type="button" class="sec" data-cerrar>Cerrar</button></div></div>';
+  document.body.appendChild(m);
+  const cerrar = () => m.remove();
+  m.addEventListener('mousedown', e => { if (e.target === m) cerrar(); });
+  m.querySelector('[data-cerrar]').addEventListener('click', cerrar);
+  const cuerpo = m.querySelector('[data-cuerpo]');
+  const peso = (x) => x ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: x.moneda || 'MXN', maximumFractionDigits: 2 }).format(x.valor) : '—';
+  const n = v => new Intl.NumberFormat('es-MX').format(v || 0);
+  try {
+    const r = await fetch('/api/meta-ads'); const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'No se pudo consultar.');
+    const vars = j.variables ? Object.entries(j.variables).map(([k, v]) => '<li>' + (v ? '✓' : '✗') + ' ' + esc(k) + '</li>').join('') : '';
+    if (j.error) { cuerpo.innerHTML = '<p class="error-msg">' + esc(j.error) + '</p><ul class="lista-vars">' + vars + '</ul>'; return; }
+    cuerpo.innerHTML = '<p class="nota-aj">Cuenta: <b>' + esc(j.cuenta.nombre) + '</b> · ' + esc(j.cuenta.estado) + ' · Gastado hoy: <b>' + peso(j.gastoHoy) + '</b></p>' +
+      (j.campanas.length ? '<div class="tabla-meta"><div class="fila-meta cab-meta"><span>Campaña</span><span>Estado</span><span>Presup./día</span><span>Gasto 7 d</span><span>Alcance</span><span>Mensajes</span></div>' +
+        j.campanas.map(c => '<div class="fila-meta"><span>' + esc(c.nombre) + '</span><span class="' + (c.activa ? 'pos' : 'neu') + '">' + esc(c.estado) + '</span><span>' + peso(c.presupuestoDiario) + '</span><span>' + peso(c.gasto7d) + '</span><span>' + n(c.alcance7d) + '</span><span>' + n(c.mensajes7d) + '</span></div>').join('') + '</div>'
+        : '<p class="neu">No hay campañas en esta cuenta.</p>') +
+      '<p class="nota-aj">Solo lectura: desde aquí no se cambia ni se gasta nada.</p>';
+  } catch (e) { cuerpo.innerHTML = '<p class="error-msg">' + esc(e.message) + '</p>'; }
 }
 
 // ---------- último post por red (arriba de la gráfica) ----------

@@ -396,6 +396,11 @@ const manejar = async (req, res) => {
         return enviarJSON(res, r.codigo || 200, r.ok ? { ok: true } : { error: r.error });
       } catch (e) { return enviarJSON(res, 502, { error: 'No se pudo enviar: ' + e.message }); }
     }
+    if (req.method === 'GET' && url.pathname === '/api/meta-ads') {   // cómo van los anuncios de Facebook e Instagram (solo lectura)
+      if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra para ver los anuncios.' });
+      try { return enviarJSON(res, 200, await require('./meta-ads.js').resumen()); }
+      catch (e) { return enviarJSON(res, 502, { error: e.message }); }
+    }
     if (url.pathname === '/api/anuncios') {   // mensajes automáticos por anuncio (se editan desde el panel)
       if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra para ver los anuncios.' });
       const An = require('./anuncios.js');
