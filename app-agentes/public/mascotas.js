@@ -30,6 +30,31 @@
     </svg>`;
   }
 
+  // ---------- animación corta: saca una impresora 3D e imprime un cubito ----------
+  const DURACION_IMPRESION = 4.6;   // segundos que se ve la acción
+  function impresora(color) {
+    return `<svg viewBox="0 0 60 56" aria-hidden="true" focusable="false">
+      <rect x="2" y="48" width="56" height="6" fill="#2b2b2b"/><rect x="14" y="44" width="32" height="4" fill="#8a8a8a"/>
+      <rect x="6" y="8" width="4" height="40" fill="#5a5a5a"/><rect x="50" y="8" width="4" height="40" fill="#5a5a5a"/>
+      <rect x="4" y="4" width="52" height="6" fill="#2b2b2b"/>
+      <rect class="imp-obj" x="22" y="28" width="16" height="16" fill="${color}"/>
+      <g class="imp-carro"><rect x="8" y="20" width="44" height="3" fill="#6a6a6a"/>
+        <g class="imp-cabezal"><rect x="26" y="23" width="8" height="5" fill="#e72c5e"/><rect x="29" y="27" width="2" height="2" fill="#fcc139"/></g></g>
+    </svg>`;
+  }
+  function iniciarImpresion(m) {
+    if (m.imprimiendo || m.estado !== 'suelo' || ocultos.has(m.id) || reducir()) return false;
+    const div = document.createElement('div'); div.className = 'impresora' + (m.x > innerWidth - ANCHO * 2.2 ? ' izq' : '');
+    div.style.width = Math.round(ANCHO * .85) + 'px'; div.innerHTML = impresora(m.color);
+    m.el.appendChild(div); m.el.classList.add('imprimiendo');
+    m.imprimiendo = performance.now() + DURACION_IMPRESION * 1000; m.pausa = Math.max(m.pausa, DURACION_IMPRESION); m.vx = 0;
+    return true;
+  }
+  function terminarImpresion(m) {
+    m.imprimiendo = 0; m.imp = aleatorio(25, 70);
+    m.el.classList.remove('imprimiendo'); const d = m.el.querySelector('.impresora'); if (d) d.remove();
+  }
+
   function iniciarCapa() {
     if (capa) return;
     capa = document.createElement('div'); capa.id = 'capa-masc'; document.body.appendChild(capa);
@@ -45,7 +70,7 @@
     el.className = 'masc'; el.tabIndex = 0; el.setAttribute('role', 'button');
     el.innerHTML = `<span class="nombre-masc"></span>${dibujo(color)}`;
     capa.appendChild(el);
-    const m = { id: a.id, el, x: aleatorio(20, Math.max(40, innerWidth - ANCHO - 20)), y: -ALTO - aleatorio(0, 160), vx: 0, vy: 0, estado: 'aire', dir: Math.random() < .5 ? -1 : 1, pausa: 0, salto: aleatorio(2, 6), plat: null, color };
+    const m = { id: a.id, el, x: aleatorio(20, Math.max(40, innerWidth - ANCHO - 20)), y: -ALTO - aleatorio(0, 160), vx: 0, vy: 0, estado: 'aire', dir: Math.random() < .5 ? -1 : 1, pausa: 0, salto: aleatorio(2, 6), plat: null, color, imp: aleatorio(8, 25), imprimiendo: 0 };
     ponerNombre(m, a);
     el.addEventListener('pointerdown', e => agarrar(m, e));
     el.addEventListener('pointermove', e => mover(m, e));
@@ -144,7 +169,8 @@
     const dt = Math.min(0.05, (t - (ultimo || t)) / 1000); ultimo = t;
     const lista = plataformas(), suelo = innerHeight, maxX = Math.max(0, innerWidth - ANCHO);
     mascotas.forEach(m => {
-      if (ocultos.has(m.id)) return;
+      if (ocultos.has(m.id)) { if (m.imprimiendo) terminarImpresion(m); return; }
+      if (m.imprimiendo && (m.estado !== 'suelo' || performance.now() >= m.imprimiendo)) terminarImpresion(m);
       if (m.estado === 'aire') {
         const pieAntes = m.y + ALTO;
         m.vy += GRAVEDAD * dt; m.x += m.vx * dt; m.y += m.vy * dt;
@@ -178,7 +204,8 @@
             }
             if (Math.random() < dt * .25) { m.pausa = aleatorio(.8, 2.5); m.dir = Math.random() < .5 ? -1 : 1; }
           }
-          if (!quieta && m.salto <= 0 && m.estado === 'suelo') {   // salto ocasional para subir a otras tarjetas
+          if (!quieta && !m.imprimiendo) { m.imp -= dt; if (m.imp <= 0) { if (!iniciarImpresion(m)) m.imp = 5; } }
+          if (!quieta && !m.imprimiendo && m.salto <= 0 && m.estado === 'suelo') {   // salto ocasional para subir a otras tarjetas
             m.estado = 'aire'; m.vy = -aleatorio(700, 1150); m.vx = m.dir * aleatorio(60, 240); m.salto = aleatorio(3, 8);
           }
         }
@@ -222,6 +249,8 @@
       relojAnuncio = setTimeout(() => { if (Date.now() >= anuncioHasta - 50) cerrar(); }, ms);
       return visible;
     },
+    // Hace que una mascota (o todas, sin id) saque la impresora 3D ahora mismo
+    imprimir(id) { mascotas.forEach(m => { if (id === undefined || m.id === id) iniciarImpresion(m); }); },
     preferencias() { return { escala, ocultos: [...ocultos] }; },
     // cambia el tamaño de todas (0.5 a 2.5 veces); los pies se quedan en su lugar para que no floten ni se hundan
     cambiarEscala(v) {

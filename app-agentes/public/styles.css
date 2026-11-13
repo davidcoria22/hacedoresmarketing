@@ -283,6 +283,19 @@ th { color: var(--suave); font-weight: 500; font-size: 11px; text-transform: upp
 .masc.caminando .p1, .masc.caminando .p3 { animation: pata-masc .42s ease-in-out infinite; }
 .masc.caminando .p2, .masc.caminando .p4 { animation: pata-masc .42s ease-in-out infinite reverse; }
 .masc.en-aire .pata { transform: scaleY(.7); }
+/* Animación corta: la mascota saca una impresora 3D e imprime un cubito (≈4.6 s) */
+.impresora { position: absolute; left: 100%; bottom: 0; margin-left: 4px; pointer-events: none; transform-origin: 50% 100%; animation: imp-sale 4.6s ease-out both; }
+.impresora.izq { left: auto; right: 100%; margin: 0 4px 0 0; }
+.impresora svg { display: block; width: 100%; height: auto; overflow: visible; filter: drop-shadow(0 4px 3px rgba(60, 30, 40, .2)); }
+.imp-obj { transform-box: fill-box; transform-origin: 50% 100%; animation: imp-sube 3.2s steps(8, end) .5s both; }
+.imp-carro { animation: imp-baja 3.2s steps(8, end) .5s both; }
+.imp-cabezal { animation: imp-barre .45s ease-in-out .5s 7 alternate both; }
+.masc.imprimiendo > svg { animation: imp-celebra 4.6s ease-out both; }
+@keyframes imp-sale { 0% { transform: scale(0); } 9% { transform: scale(1.12); } 12%, 90% { transform: scale(1); } 100% { transform: scale(0); } }
+@keyframes imp-sube { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+@keyframes imp-baja { from { transform: translateY(16px); } to { transform: translateY(0); } }
+@keyframes imp-barre { from { transform: translateX(-9px); } to { transform: translateX(9px); } }
+@keyframes imp-celebra { 0%, 78% { transform: none; } 82% { transform: translateY(-9px); } 88% { transform: none; } 91% { transform: translateY(-6px); } 96%, 100% { transform: none; } }
 .masc.agarrada svg { animation: colgada-masc .35s ease-in-out infinite alternate; transform-origin: 50% 0; }
 .masc.agarrada .pata { transform: scaleY(1.15); }
 .masc .ojos-m { transform-box: fill-box; transform-origin: 50% 50%; animation: parpadeo-masc 5s infinite; }
