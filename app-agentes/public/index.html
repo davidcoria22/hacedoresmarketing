@@ -6,7 +6,7 @@
   <title>Panel · Hacedores</title>
   <link rel="icon" type="image/jpeg" href="icono-hacedores.jpg">
   <link rel="apple-touch-icon" href="icono-hacedores.jpg">
-  <link rel="stylesheet" href="styles.css?v=rosa8">
+  <link rel="stylesheet" href="styles.css?v=rosa13">
 </head>
 <body data-vista="inicio">
   <div class="lienzo">
@@ -83,11 +83,10 @@
 
     <!-- AGENTES -->
     <main class="vista" id="vista-agentes" hidden>
-      <h1 class="saludo">Agentes</h1>
-      <p class="fecha" id="estado-chat"></p>
+      <h1 class="saludo titulo-eng">Agentes <button type="button" class="btn-engrane" id="btn-ajuste-masc" aria-label="Ajustes de los agentes: tamaño y cuáles se ven" aria-expanded="false" title="Tamaño y visibilidad de los agentes"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM19.4 13.5a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V19a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H5a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3h0a1.6 1.6 0 0 0 1-1.5V5a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v0a1.6 1.6 0 0 0 1.5 1H19a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg></button></h1>
       <div class="rejilla dos">
         <section class="tarjeta">
-          <div class="tit"><h3>Agentes</h3><span class="neu">toca para hablar</span></div>
+          <div class="tit"><h3>Agentes</h3><span class="neu">toca para ver su última actualización</span></div>
           <div id="lista-agentes-panel" class="lista-agentes"></div>
         </section>
         <section class="tarjeta">
@@ -98,28 +97,12 @@
     </main>
   </div>
 
-  <!-- Chat lateral con un agente -->
-  <section class="cajon" id="cajon-chat" aria-label="Chat con agente">
-    <div class="cajon-cab">
-      <h2 id="chat-cabecera">Chat</h2>
-      <button class="cerrar" data-cerrar="cajon-chat" aria-label="Cerrar">×</button>
-    </div>
-    <div class="chat-cuerpo">
-      <div class="mensajes" id="mensajes"></div>
-      <div class="acciones" id="acciones" hidden></div>
-      <form id="formulario" class="formulario">
-        <input id="entrada" type="text" placeholder="Escribe tu pregunta…" autocomplete="off">
-        <button type="submit">Enviar</button>
-      </form>
-    </div>
-  </section>
-
   <!-- Conversación en ventana emergente (se abre en la sección donde estés) -->
   <div class="modal-conv" id="modal-conv" hidden>
     <section class="conv" id="conv" role="dialog" aria-modal="true" aria-label="Conversación"></section>
   </div>
 
-  <div class="velo" id="velo"></div>
-  <script src="app.js?v=rosa8"></script>
+  <script src="mascotas.js?v=rosa13"></script>
+  <script src="app.js?v=rosa13"></script>
 </body>
 </html>

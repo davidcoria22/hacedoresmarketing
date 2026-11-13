@@ -8,10 +8,8 @@ const REDES = [
 let datos = [];
 let redActiva = 'instagram';
 let agentes = [];
-let agenteActivo = null;
 let oficinaIniciada = false;
 let modoPublico = false;   // en línea: el engrane pide la contraseña del panel y no se puede escribir en la hoja de seguidores
-const historiales = {};
 
 const $ = s => document.querySelector(s);
 const fmt = n => (n == null ? '—' : n.toLocaleString('es-MX'));
@@ -23,18 +21,6 @@ function hoyTexto() {
 }
 function trabajaHoy(a) { return !!(a.ultimo && a.ultimo.fecha === hoyTexto()); }
 
-// ---------- cajones y velo ----------
-function abrir(id) {
-  cerrarTodo();
-  $('#' + id).classList.add('abierto');
-  $('#velo').classList.add('activo');
-}
-function cerrarTodo() {
-  document.querySelectorAll('.cajon').forEach(c => c.classList.remove('abierto'));
-  $('#velo').classList.remove('activo');
-}
-document.querySelectorAll('[data-cerrar]').forEach(b => b.addEventListener('click', cerrarTodo));
-$('#velo').addEventListener('click', cerrarTodo);
 const COLORES = ['#5E8C61', '#E08A4B', '#5E7FB0', '#C4553D', '#8A6FB0', '#3E8C8C'];
 
 // ---------- menú: una sección a la vez ----------
@@ -59,7 +45,6 @@ async function cargar() {
   ]);
   agentes = ag.agentes;
   modoPublico = !!ag.modoPublico;
-  $('#estado-chat').textContent = ag.chatActivo ? 'Chat conectado a Claude' : 'Chat en modo local (sin IA)';
   datos = seg.error ? [] : seg.ultimos;
   pintarAgentesPanel();
   pintarRedes();
@@ -83,28 +68,88 @@ function cara(color, trabaja) {
   </svg>`;
 }
 
+// ---------- mascotas: cada agente camina por el panel y su burbuja muestra la última actualización ----------
+const ultimaTexto = a => (a.ultimo ? 'Última actualización: ' + a.ultimo.fecha + (a.ultimo.resultado ? ' · ' + a.ultimo.resultado : '') : 'Sin actualizaciones todavía');
+function burbujaAgente(id) {
+  const a = agentes.find(x => x.id === id); if (!a) return '';
+  const t = trabajaHoy(a), u = a.ultimo;
+  let cuerpo = '';
+  if (id === 'seguidores-diarios') {   // icono de cada red con su cifra de hoy y el cambio contra el día anterior
+    const hoy = datos[datos.length - 1], ayer = datos[datos.length - 2];
+    cuerpo = '<div class="bub-redes">' + REDES.map(r => {
+      const v = hoy ? hoy[r.id] : null, p = ayer ? ayer[r.id] : null, d = v != null && p != null ? v - p : null;
+      const cambio = d == null ? '<em class="neu">sin dato</em>' : d > 0 ? '<em class="pos">+' + fmt(d) + '</em>' : d < 0 ? '<em class="neg">' + fmt(d) + '</em>' : '<em class="neu">+0</em>';
+      return '<div class="bub-red"><svg viewBox="0 0 24 24" width="20" height="20" style="color:' + r.color + '" aria-label="' + r.nombre + '">' + r.icono + '</svg><b>' + (v == null ? '—' : fmt(v)) + '</b>' + cambio + '</div>';
+    }).join('') + '</div>';
+  } else if (id === 'whatsapp') {
+    const todos = conversaciones.flatMap(c => c.mensajes), hoy = diaLocal(Date.now());
+    const rec = todos.filter(m => m.direccion !== 'salida' && diaLocal(m.fecha) === hoy).length, env = todos.filter(m => m.direccion === 'salida' && diaLocal(m.fecha) === hoy).length;
+    cuerpo = '<p class="bub-linea">Hoy: <b>' + rec + '</b> mensajes recibidos, <b>' + env + '</b> enviados, <b>' + resumenCola.pendientes + '</b> en cola.</p>';
+  }
+  const pie = u ? 'Última actualización: <b>' + esc(u.fecha) + '</b>' + (u.resultado ? ' · ' + esc(u.resultado) : '') + (u.nota ? '<br>' + esc(u.nota) : '') : 'Todavía no hay actualizaciones.';
+  return '<div class="bub-cab"><b>' + esc(a.nombre) + '</b>' + (a.rol ? '<span>' + esc(a.rol) + '</span>' : '') + '</div>' +
+    '<div class="bub-est ' + (t ? 'on' : '') + '"><i></i>' + (t ? 'Trabajando hoy' : 'Descansando') + '</div>' + cuerpo + '<p class="bub-pie">' + pie + '</p>';
+}
+function sincronizarMascotas() {
+  if (!window.Mascotas) return;
+  // cada mascota con su propio color: el que elegiste en los ajustes y, si se repite o falta, uno libre de la paleta
+  const paleta = [...COLORES, '#e72c5e', '#E5A92B', '#2B2B2A'], usados = new Set();
+  const elegir = a => { const c = (a.color || '').toLowerCase(); if (c && !usados.has(c)) return c; return (paleta.find(p => !usados.has(p.toLowerCase())) || paleta[0]); };
+  Mascotas.sincronizar(agentes.map(a => { const color = elegir(a); usados.add(color.toLowerCase()); coloresMasc[a.id] = color; return { id: a.id, nombre: a.nombre, color }; }), burbujaAgente);
+}
+const coloresMasc = {};
+
+// Engrane junto al título "Agentes": tamaño de las mascotas y cuáles se ven
+function cerrarPanelMasc() {
+  const p = $('#panel-masc'); if (p) p.remove();
+  $('#btn-ajuste-masc').setAttribute('aria-expanded', 'false');
+}
+function abrirPanelMasc() {
+  if ($('#panel-masc')) { cerrarPanelMasc(); return; }
+  const btn = $('#btn-ajuste-masc'), pref = Mascotas.preferencias();
+  const p = document.createElement('div'); p.id = 'panel-masc'; p.setAttribute('role', 'dialog'); p.setAttribute('aria-label', 'Ajustes de los agentes');
+  p.innerHTML = '<h4>Tamaño</h4><div class="fila-tam"><input type="range" min="0.5" max="2.5" step="0.1" value="' + pref.escala + '" aria-label="Tamaño de los agentes"><span class="valor-tam">' + Math.round(pref.escala * 100) + '%</span></div>' +
+    '<div class="acciones-vis"><button type="button" data-tam="1">Tamaño normal</button></div><div class="sep"></div><h4>Agentes visibles</h4>' +
+    '<div class="lista-vis">' + agentes.map(a => '<label class="vis"><input type="checkbox" data-id="' + esc(a.id) + '"' + (pref.ocultos.includes(a.id) ? '' : ' checked') + '><span class="punto-color" style="background:' + esc(coloresMasc[a.id] || '#999') + '"></span>' + esc(a.nombre) + '</label>').join('') + '</div>' +
+    '<div class="acciones-vis"><button type="button" data-todos="1">Mostrar todos</button><button type="button" data-todos="0">Ocultar todos</button></div>';
+  document.body.appendChild(p);
+  const r = btn.getBoundingClientRect();
+  p.style.left = Math.max(12, Math.min(r.left + scrollX, innerWidth - p.offsetWidth - 12)) + 'px'; p.style.top = (r.bottom + scrollY + 10) + 'px';
+  btn.setAttribute('aria-expanded', 'true');
+  const rango = p.querySelector('input[type=range]'), valor = p.querySelector('.valor-tam');
+  rango.addEventListener('input', () => { Mascotas.cambiarEscala(rango.value); valor.textContent = Math.round(rango.value * 100) + '%'; });
+  p.querySelector('[data-tam]').addEventListener('click', () => { rango.value = 1; Mascotas.cambiarEscala(1); valor.textContent = '100%'; });
+  const marcas = [...p.querySelectorAll('input[type=checkbox]')];
+  marcas.forEach(i => i.addEventListener('change', () => Mascotas.mostrarAgente(i.dataset.id, i.checked)));
+  p.querySelectorAll('[data-todos]').forEach(b => b.addEventListener('click', () => marcas.forEach(i => { i.checked = b.dataset.todos === '1'; Mascotas.mostrarAgente(i.dataset.id, i.checked); })));
+}
+$('#btn-ajuste-masc').addEventListener('click', e => { e.stopPropagation(); abrirPanelMasc(); });
+document.addEventListener('pointerdown', e => { if ($('#panel-masc') && !e.target.closest('#panel-masc, #btn-ajuste-masc')) cerrarPanelMasc(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarPanelMasc(); });
+
 // ---------- panel derecho: agentes ----------
 function pintarAgentesPanel() {
   $('#lista-agentes-panel').innerHTML = agentes.map((a, i) => {
     const t = trabajaHoy(a);
-    return `<div class="agente-fila" role="button" tabindex="0" data-chat="${a.id}">
+    return `<div class="agente-fila" role="button" tabindex="0" data-agente="${a.id}">
       <span class="ag-cara">${cara(a.color || COLORES[i % COLORES.length], t)}</span>
       <span class="ag-datos">
         <span class="ag-nombre">${esc(a.nombre)}</span>
         ${a.rol ? `<span class="ag-rol">${esc(a.rol)}</span>` : ''}
         <span class="ag-estado ${t ? 'on' : ''}"><i></i>${t ? 'Trabajando' : 'Descansando'}</span>
+        <span class="ag-ult">${esc(ultimaTexto(a))}</span>
       </span>
-      <span class="ag-chat">Hablar</span>
       ${`<button class="ag-engrane" data-ajustes="${a.id}" title="Ajustes del agente" aria-label="Ajustes de ${esc(a.nombre)}">
         <svg viewBox="0 0 24 24" width="17" height="17"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM19.4 13.5a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V19a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H5a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3h0a1.6 1.6 0 0 0 1-1.5V5a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v0a1.6 1.6 0 0 0 1.5 1H19a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
       </button>`}
     </div>`;
   }).join('') || '<p class="neu">No hay agentes todavía.</p>';
   const lista = $('#lista-agentes-panel');
-  lista.querySelectorAll('[data-chat]').forEach(b => {
-    b.addEventListener('click', () => abrirChat(b.dataset.chat));
-    b.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target === b) abrirChat(b.dataset.chat); });
+  lista.querySelectorAll('[data-agente]').forEach(b => {
+    b.addEventListener('click', () => window.Mascotas && Mascotas.mostrar(b.dataset.agente));   // su mascota salta y abre la burbuja
+    b.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target === b) window.Mascotas && Mascotas.mostrar(b.dataset.agente); });
   });
+  sincronizarMascotas();
   lista.querySelectorAll('[data-ajustes]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); abrirAjustes(b.dataset.ajustes); }));
 }
 
@@ -150,7 +195,6 @@ function abrirAjustes(id) {
     const ag = await fetch('/api/agentes').then(r => r.json());
     agentes = ag.agentes;
     pintarAgentesPanel();
-    if (agenteActivo === id) $('#chat-cabecera').textContent = agentes.find(x => x.id === id).nombre;
   };
   m.querySelector('[data-restablecer]').addEventListener('click', () => guardar({}));
   m.querySelector('form').addEventListener('submit', e => {
@@ -339,92 +383,6 @@ function pintarRegistro(filas) {
       <td><span class="etiq ${f.resultado === 'OK' ? 'ok' : 'error'}">${f.resultado}</span></td>
       <td>${f.redes_ok || f.redes_con_error || '—'}</td></tr>`).join('')}</tbody></table>`;
 }
-
-// ---------- chat ----------
-function abrirChat(id) {
-  agenteActivo = id;
-  const a = agentes.find(x => x.id === id);
-  $('#chat-cabecera').textContent = a ? a.nombre : 'Chat';
-  abrir('cajon-chat');
-  pintarMensajes();
-  pintarAcciones();
-  setTimeout(() => $('#entrada').focus(), 350);
-}
-// Botones rápidos: solo para el agente de seguidores
-const ACCIONES = [
-  { id: 'resumen', texto: 'Resumen diario', ayuda: 'Resumen de seguidores del último registro' },
-  { id: 'actualizar-hoy', texto: 'Actualizar hoy en la hoja', ayuda: 'Sobrescribe la fila de hoy con las cifras actuales' },
-  { id: 'semana', texto: 'Últimos 7 días', ayuda: 'Muestra los seguidores de la última semana' },
-];
-function pintarAcciones() {
-  const cont = $('#acciones');
-  if (agenteActivo !== 'seguidores-diarios') { cont.hidden = true; cont.innerHTML = ''; return; }
-  cont.hidden = false;
-  cont.innerHTML = ACCIONES.filter(a => !(modoPublico && a.id === 'actualizar-hoy')).map(a => `<button type="button" class="chip" data-accion="${a.id}" title="${a.ayuda}">${a.texto}</button>`).join('');
-  cont.querySelectorAll('[data-accion]').forEach(b => b.addEventListener('click', () => ejecutarAccion(b.dataset.accion)));
-}
-async function ejecutarAccion(id) {
-  const accion = ACCIONES.find(a => a.id === id);
-  if (!accion || !agenteActivo) return;
-  if (id === 'actualizar-hoy' && !confirm('Esto sobrescribe la fila de hoy en la hoja de seguidores con las cifras actuales. ¿Continuar?')) return;
-  const h = (historiales[agenteActivo] ||= []);
-  const agente = agenteActivo;
-  h.push({ role: 'user', content: accion.texto });
-  pintarMensajes();
-  const cont = $('#acciones');
-  cont.querySelectorAll('button').forEach(b => b.disabled = true);
-  const esperando = document.createElement('div');
-  esperando.className = 'burbuja agente'; esperando.textContent = 'Trabajando…';
-  $('#mensajes').appendChild(esperando);
-  try {
-    const r = await fetch('/api/accion', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agente, accion: id }),
-    });
-    const j = await r.json();
-    h.push({ role: 'assistant', content: j.respuesta || j.error || 'Sin respuesta' });
-  } catch (err) {
-    h.push({ role: 'assistant', content: 'Error: ' + err.message });
-  }
-  cont.querySelectorAll('button').forEach(b => b.disabled = false);
-  if (agenteActivo === agente) pintarMensajes();
-}
-function pintarMensajes() {
-  const h = historiales[agenteActivo] || [];
-  const cont = $('#mensajes');
-  cont.innerHTML = '';
-  if (!h.length) { cont.innerHTML = '<p class="neu">Escribe una pregunta para empezar.</p>'; return; }
-  h.forEach(m => {
-    const d = document.createElement('div');
-    d.className = 'burbuja ' + (m.role === 'user' ? 'yo' : 'agente');
-    d.textContent = m.content;
-    cont.appendChild(d);
-  });
-  cont.scrollTop = cont.scrollHeight;
-}
-$('#formulario').addEventListener('submit', async e => {
-  e.preventDefault();
-  const texto = $('#entrada').value.trim();
-  if (!texto || !agenteActivo) return;
-  $('#entrada').value = '';
-  const h = (historiales[agenteActivo] ||= []);
-  h.push({ role: 'user', content: texto });
-  pintarMensajes();
-  const esperando = document.createElement('div');
-  esperando.className = 'burbuja agente'; esperando.textContent = 'Pensando…';
-  $('#mensajes').appendChild(esperando);
-  try {
-    const r = await fetch('/api/chat', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ agente: agenteActivo, mensajes: h }),
-    });
-    const j = await r.json();
-    h.push({ role: 'assistant', content: j.respuesta || j.error || 'Sin respuesta' });
-  } catch (err) {
-    h.push({ role: 'assistant', content: 'Error: ' + err.message });
-  }
-  pintarMensajes();
-});
 
 // ---------- Mensajes de Meta (sección privada: en línea pide contraseña) ----------
 const RED_MSG = {

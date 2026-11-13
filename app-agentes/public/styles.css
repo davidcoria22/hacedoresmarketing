@@ -270,3 +270,63 @@ th { color: var(--suave); font-weight: 500; font-size: 11px; text-transform: upp
   .burbuja-c { max-width: 88%; }
   .menu button { padding: 8px 12px; }
 }
+
+/* ---------- Mascotas (los agentes caminando por el panel) ---------- */
+#capa-masc { position: fixed; inset: 0; z-index: 30; pointer-events: none; overflow: hidden; }
+.masc { position: absolute; left: 0; top: 0; width: 74px; height: 50px; pointer-events: auto; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; will-change: transform; outline: none; }
+.masc.agarrada { cursor: grabbing; }
+.masc:focus-visible svg { filter: drop-shadow(0 0 0 #fff) drop-shadow(0 0 3px var(--rosa)); }
+.masc svg { display: block; overflow: visible; filter: drop-shadow(0 6px 5px rgba(60, 30, 40, .18)); transform-origin: 50% 100%; }
+.nombre-masc { position: absolute; left: 50%; top: -17px; transform: translateX(-50%); font-size: 10.5px; line-height: 1; color: var(--texto); background: rgba(255, 255, 255, .85); border-radius: 999px; padding: 3px 8px; white-space: nowrap; max-width: 120px; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.masc .pata { transform-box: fill-box; transform-origin: 50% 0; }
+.masc.caminando .cuerpo-m { animation: rebote-masc .42s ease-in-out infinite; }
+.masc.caminando .p1, .masc.caminando .p3 { animation: pata-masc .42s ease-in-out infinite; }
+.masc.caminando .p2, .masc.caminando .p4 { animation: pata-masc .42s ease-in-out infinite reverse; }
+.masc.en-aire .pata { transform: scaleY(.7); }
+.masc.agarrada svg { animation: colgada-masc .35s ease-in-out infinite alternate; transform-origin: 50% 0; }
+.masc.agarrada .pata { transform: scaleY(1.15); }
+.masc .ojos-m { transform-box: fill-box; transform-origin: 50% 50%; animation: parpadeo-masc 5s infinite; }
+@keyframes pata-masc { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px) scaleY(.7); } }
+@keyframes rebote-masc { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes colgada-masc { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }
+@keyframes parpadeo-masc { 0%, 94%, 100% { transform: scaleY(1); } 97% { transform: scaleY(.1); } }
+@media (prefers-reduced-motion: reduce) { .masc *, .masc svg { animation: none !important; } }
+
+/* burbuja de diálogo */
+#burbuja-masc { position: fixed; z-index: 31; width: max-content; max-width: min(300px, calc(100vw - 16px)); background: #fff; color: var(--texto); border-radius: 20px; padding: 14px 16px; font-size: 13px; line-height: 1.4; box-shadow: 0 12px 34px rgba(60, 30, 40, .22); border-top: 4px solid var(--color-masc, var(--rosa)); }
+#burbuja-masc::after { content: ""; position: absolute; left: var(--cola, 30px); bottom: -9px; width: 16px; height: 16px; background: #fff; transform: translateX(-50%) rotate(45deg); border-radius: 3px; }
+#burbuja-masc.abajo::after { bottom: auto; top: -11px; background: var(--color-masc, var(--rosa)); border-radius: 3px; }
+.bub-x { position: absolute; top: 6px; right: 8px; border: 0; background: none; font-size: 18px; line-height: 1; color: var(--suave); cursor: pointer; }
+.bub-cab { display: flex; flex-direction: column; margin-bottom: 6px; padding-right: 16px; }
+.bub-cab b { font-size: 14px; font-weight: 500; }
+.bub-cab span, .bub-est { color: var(--suave); font-size: 12px; }
+.bub-est i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #C9CFC2; margin-right: 6px; }
+.bub-est.on i { background: var(--rosa); }
+.bub-redes { display: grid; gap: 6px; margin: 8px 0; }
+.bub-red { display: flex; align-items: center; gap: 8px; }
+.bub-red svg { flex: none; }
+.bub-red b { font-weight: 500; font-variant-numeric: tabular-nums; }
+.bub-red em { font-style: normal; font-size: 12px; margin-left: auto; font-variant-numeric: tabular-nums; }
+.bub-linea { margin: 6px 0 0; }
+.bub-pie { margin: 8px 0 0; padding-top: 8px; border-top: 1px solid var(--linea); font-size: 12px; color: var(--suave); }
+.ag-ult { display: block; font-size: 12px; color: var(--suave); }
+.agente-fila { cursor: pointer; }
+
+/* ajustes de los agentes (tamaño y cuáles se ven) */
+.titulo-eng { display: flex; align-items: center; gap: 10px; }
+.btn-engrane { display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: 50%; background: var(--vidrio); color: var(--texto); cursor: pointer; transition: background .15s, transform .3s; }
+.btn-engrane:hover, .btn-engrane[aria-expanded="true"] { background: #fff; transform: rotate(45deg); }
+#panel-masc { position: absolute; z-index: 40; width: min(320px, calc(100vw - 24px)); background: #fff; border-radius: 24px; padding: 18px 20px; box-shadow: 0 16px 44px rgba(60, 30, 40, .22); font-size: 14px; }
+#panel-masc h4 { margin: 0 0 8px; font-size: 14px; font-weight: 500; }
+#panel-masc .fila-tam { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+#panel-masc input[type=range] { flex: 1; accent-color: var(--rosa); }
+#panel-masc .valor-tam { width: 46px; text-align: right; font-variant-numeric: tabular-nums; color: var(--suave); }
+#panel-masc .sep { height: 1px; background: var(--linea); margin: 14px 0; }
+#panel-masc .lista-vis { display: flex; flex-direction: column; gap: 2px; }
+#panel-masc label.vis { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 14px; cursor: pointer; }
+#panel-masc label.vis:hover { background: var(--fondo); }
+#panel-masc label.vis input { width: 18px; height: 18px; accent-color: var(--rosa); }
+#panel-masc .punto-color { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+#panel-masc .acciones-vis { display: flex; gap: 8px; margin-top: 10px; }
+#panel-masc .acciones-vis button { border: 0; background: var(--fondo); border-radius: 999px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
+#panel-masc .acciones-vis button:hover { background: var(--rosa-suave); }
