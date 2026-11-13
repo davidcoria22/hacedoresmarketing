@@ -413,7 +413,8 @@ const manejar = async (req, res) => {
     }
     if (req.method === 'GET' && url.pathname === '/api/seguidores') {
       const { datos } = await leerHoja();
-      const ultimos = datos.slice(-60);
+      const limite = Math.min(2000, Math.max(1, Number(url.searchParams.get('limite')) || 60));   // por defecto 60 filas; la gráfica del inicio pide más para ver meses y años
+      const ultimos = datos.slice(-limite);
       return enviarJSON(res, 200, { ultimos, total: datos.length });
     }
     if (req.method === 'GET' && url.pathname === '/api/registro') {

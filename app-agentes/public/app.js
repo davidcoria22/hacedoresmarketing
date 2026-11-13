@@ -6,6 +6,7 @@ const REDES = [
   { id: 'twitter', nombre: 'X', color: '#111111', icono: '<path d="M4 4h4.2l4 5.6L17.9 4H20l-6.2 7.2L20.5 20h-4.2l-4.3-6-5.1 6H4.8l6.6-7.6z" fill="currentColor"/>' },
 ];
 let datos = [];
+let datosTodos = [];
 let redActiva = 'instagram';
 let agentes = [];
 let oficinaIniciada = false;
@@ -30,6 +31,7 @@ function irA(vista) {
   document.querySelectorAll('.menu button').forEach(b => b.classList.toggle('activo', b.dataset.vista === vista));
   try { localStorage.setItem('vista', vista); } catch { /* sin almacenamiento */ }
   if (vista === 'redes') setTimeout(pintarGrafica, 0);   // la gráfica necesita medir su ancho ya visible
+  if (vista === 'inicio') setTimeout(pintarGraficaInicio, 0);
   if (vista === 'mensajes') cargarMensajes();
 }
 document.querySelectorAll('.menu button').forEach(b => b.addEventListener('click', () => irA(b.dataset.vista)));
@@ -40,17 +42,18 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarTodo()
 async function cargar() {
   const [ag, seg, reg] = await Promise.all([
     fetch('/api/agentes').then(r => r.json()),
-    fetch('/api/seguidores').then(r => r.json()).catch(e => ({ error: e.message })),
+    fetch('/api/seguidores?limite=1000').then(r => r.json()).catch(e => ({ error: e.message })),
     fetch('/api/registro').then(r => r.json()),
   ]);
   agentes = ag.agentes;
   modoPublico = !!ag.modoPublico;
-  datos = seg.error ? [] : seg.ultimos;
+  datosTodos = seg.error ? [] : seg.ultimos;   // todo el historial que devuelve la hoja (hasta 1000 filas)
+  datos = datosTodos.slice(-60);                // los últimos 60 registros, para la sección Redes
   pintarAgentesPanel();
   pintarRedes();
   pintarGrafica();
   pintarRegistro(reg.registro);
-  pintarSemana();
+  pintarSeguidoresInicio();
   pintarBarrasRedes();
   if (!cachePosts.__listo) { cachePosts.__listo = true; cargarPost(); }
 }
@@ -288,21 +291,18 @@ function curva(ps) {
   }
   return d;
 }
-function pintarGrafica() {
-  const red = REDES.find(r => r.id === redActiva);
-  $('#titulo-grafica').textContent = red.nombre;
-  const cont = $('#grafica');
-  const pts = datos.filter(d => d[red.id] != null);
-  if (pts.length < 2) { cont.innerHTML = '<p class="neu">Sin datos suficientes.</p>'; return; }
+// Gráfica de línea con área, cuadrícula y globo al pasar el mouse. pts: [{ v, texto }]
+function dibujarLinea(cont, pts, { idG, previo }) {
+  if (pts.length < 2) { cont.innerHTML = '<p class="neu">Sin datos suficientes para este periodo. Prueba con un rango más largo o agrupa por día.</p>'; return; }
   const W = Math.max(260, cont.clientWidth || 300), H = 190;
   const M = { t: 14, r: 12, b: 26, l: 46 };
-  const vals = pts.map(d => d[red.id]);
+  const vals = pts.map(d => d.v);
   const min0 = Math.min(...vals), max0 = Math.max(...vals);
   const rango0 = max0 - min0 || Math.max(1, max0 * 0.01);
   const lo = min0 - rango0 * 0.2, hi = max0 + rango0 * 0.15;
   const x = i => M.l + (i * (W - M.l - M.r)) / (pts.length - 1);
   const y = v => M.t + (1 - (v - lo) / (hi - lo)) * (H - M.t - M.b);
-  const ps = pts.map((d, i) => [x(i), y(d[red.id])]);
+  const ps = pts.map((d, i) => [x(i), y(d.v)]);
   const linea = curva(ps);
   const area = linea + ` L${x(pts.length - 1).toFixed(1)},${H - M.b} L${x(0).toFixed(1)},${H - M.b} Z`;
   const grid = [0, 1, 2, 3].map(k => {
@@ -310,11 +310,10 @@ function pintarGrafica() {
     return `<line x1="${M.l}" x2="${W - M.r}" y1="${yy}" y2="${yy}" stroke="#ECEAE2"/>
       <text x="${M.l - 8}" y="${+yy + 4}" text-anchor="end" font-size="10" fill="#9AA095">${fmt(Math.round(v))}</text>`;
   }).join('');
-  const idG = 'g-' + red.id;
   const trazo = '#e72c5e';   // rosa del tema
   const ult = pts[pts.length - 1];
-  const etiquetas = `<text x="${M.l}" y="${H - 6}" font-size="10" fill="#9AA095">${pts[0].fechaTexto}</text>
-    <text x="${W - M.r}" y="${H - 6}" font-size="10" fill="#9AA095" text-anchor="end">${ult.fechaTexto}</text>`;
+  const etiquetas = `<text x="${M.l}" y="${H - 6}" font-size="10" fill="#9AA095">${esc(pts[0].texto)}</text>
+    <text x="${W - M.r}" y="${H - 6}" font-size="10" fill="#9AA095" text-anchor="end">${esc(ult.texto)}</text>`;
   cont.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
     <defs><linearGradient id="${idG}" x1="0" x2="0" y1="0" y2="1">
       <stop offset="0%" stop-color="${trazo}" stop-opacity=".30"/><stop offset="100%" stop-color="${trazo}" stop-opacity="0"/></linearGradient></defs>
@@ -336,33 +335,85 @@ function pintarGrafica() {
     const [px, py] = ps[i];
     guia.setAttribute('x1', px); guia.setAttribute('x2', px); guia.setAttribute('opacity', '.6');
     punto.setAttribute('cx', px); punto.setAttribute('cy', py); punto.setAttribute('opacity', '1');
-    const prev = pts[i - 1], d = prev ? pts[i][red.id] - prev[red.id] : null;
+    const prev = pts[i - 1], d = prev ? pts[i].v - prev.v : null;
     tip.hidden = false;
-    tip.innerHTML = `<strong>${fmt(pts[i][red.id])}</strong><span>${pts[i].fechaTexto}</span>${d == null ? '' : `<span class="${d >= 0 ? 'pos' : 'neg'}">${d >= 0 ? '+' : ''}${d} vs. día anterior</span>`}`;
+    tip.innerHTML = `<strong>${fmt(pts[i].v)}</strong><span>${esc(pts[i].texto)}</span>${d == null ? '' : `<span class="${d >= 0 ? 'pos' : 'neg'}">${d >= 0 ? '+' : ''}${fmt(d)} vs. ${previo}</span>`}`;
     tip.style.left = Math.min(W - 150, Math.max(0, px - 60)) + 'px';
     tip.style.top = Math.max(0, py - 58) + 'px';
   });
   svg.addEventListener('mouseleave', () => { tip.hidden = true; guia.setAttribute('opacity', '0'); punto.setAttribute('opacity', '0'); });
 }
+// Sección Redes: una red a la vez, últimos 60 registros
+function pintarGrafica() {
+  const red = REDES.find(r => r.id === redActiva);
+  $('#titulo-grafica').textContent = red.nombre;
+  dibujarLinea($('#grafica'), datos.filter(d => d[red.id] != null).map(d => ({ v: d[red.id], texto: d.fechaTexto })), { idG: 'g-' + red.id, previo: 'día anterior' });
+}
 let redimension;
-window.addEventListener('resize', () => { clearTimeout(redimension); redimension = setTimeout(pintarGrafica, 150); });
+window.addEventListener('resize', () => { clearTimeout(redimension); redimension = setTimeout(() => { pintarGrafica(); pintarGraficaInicio(); }, 150); });
 
 // ---------- inicio: seguidores de la semana y por red ----------
-function pintarSemana() {
-  const ult = datos.slice(-8);
-  const cont = $('#barras-sem');
-  if (ult.length < 2) { $('#seg-semana').textContent = '—'; cont.innerHTML = ''; return; }
-  // diferencia por red solo cuando hay dato en los dos días (si a una red le falta el dato de un día, no se cuenta como si hubiera perdido todo)
-  const difs = ult.slice(1).map((d, i) => REDES.reduce((s, x) => (d[x.id] != null && ult[i][x.id] != null ? s + d[x.id] - ult[i][x.id] : s), 0));
-  const suma = difs.reduce((a, b) => a + b, 0);
-  $('#seg-semana').innerHTML = `${suma > 0 ? '+' : ''}${fmt(suma)} <span class="neu">esta semana</span>`;
-  const max = Math.max(1, ...difs.map(Math.abs));
-  cont.innerHTML = difs.map((v, i) => {
-    const t = new Date(); t.setDate(t.getDate() - (difs.length - 1 - i));
-    const dia = ['D', 'L', 'M', 'M', 'J', 'V', 'S'][t.getDay()];
-    return `<div class="${i === difs.length - 1 ? 'hoy' : ''} ${v === 0 ? 'vacio' : ''}"><i style="height:${Math.max(6, Math.round(Math.abs(v) / max * 80))}px"></i>${dia}</div>`;
-  }).join('');
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const RANGOS = [{ id: '7', texto: '7 días' }, { id: '30', texto: '30 días' }, { id: '90', texto: '3 meses' }, { id: '365', texto: '1 año' }, { id: '0', texto: 'Todo' }];
+const AGRUPAR = [{ id: 'dia', texto: 'Por día', previo: 'día anterior' }, { id: 'semana', texto: 'Por semana', previo: 'semana anterior' }, { id: 'mes', texto: 'Por mes', previo: 'mes anterior' }];
+let ctlSeg = { red: 'total', rango: '30', agrupar: 'dia' };
+try { const g = JSON.parse(localStorage.getItem('seguidores-inicio') || '{}'); if (g.red && (g.red === 'total' || REDES.some(r => r.id === g.red))) ctlSeg.red = g.red; if (RANGOS.some(r => r.id === g.rango)) ctlSeg.rango = g.rango; if (AGRUPAR.some(a => a.id === g.agrupar)) ctlSeg.agrupar = g.agrupar; } catch { /* sin preferencias guardadas */ }
+const diaMx = f => { const d = new Date(Date.parse(f) - 6 * 3600000); return d; };   // la hoja guarda la medianoche de México (UTC-6): se lee con getUTC*
+// Serie de seguidores: "total" suma las redes (si a una le falta el dato de un día se usa el último que tuvo)
+function serieSeguidores() {
+  const base = [], ultimoDe = {};
+  for (const d of datosTodos) {
+    let v;
+    if (ctlSeg.red === 'total') {
+      REDES.forEach(r => { if (d[r.id] != null) ultimoDe[r.id] = d[r.id]; });
+      if (!REDES.every(r => ultimoDe[r.id] != null)) continue;
+      v = REDES.reduce((s, r) => s + ultimoDe[r.id], 0);
+    } else { v = d[ctlSeg.red]; if (v == null) continue; }
+    const t = diaMx(d.fecha);
+    if (isNaN(t)) continue;
+    base.push({ t, v, texto: d.fechaTexto });
+  }
+  const limite = Number(ctlSeg.rango) ? Date.now() - Number(ctlSeg.rango) * 86400000 : 0;
+  const enRango = base.filter(p => p.t.getTime() >= limite - 6 * 3600000);
+  if (ctlSeg.agrupar === 'dia') return enRango;
+  // por semana (lunes a domingo) o por mes: cada punto es el último dato del periodo
+  const grupos = new Map();
+  for (const p of enRango) {
+    let clave, texto;
+    if (ctlSeg.agrupar === 'semana') {
+      const lun = new Date(p.t); lun.setUTCDate(lun.getUTCDate() - ((lun.getUTCDay() + 6) % 7));
+      clave = lun.toISOString().slice(0, 10); texto = 'Semana del ' + lun.getUTCDate() + ' ' + MESES[lun.getUTCMonth()];
+    } else { clave = p.t.getUTCFullYear() + '-' + p.t.getUTCMonth(); texto = MESES[p.t.getUTCMonth()] + ' ' + p.t.getUTCFullYear(); }
+    grupos.set(clave, { t: p.t, v: p.v, texto });   // el último registro del periodo reemplaza a los anteriores
+  }
+  return [...grupos.values()];
 }
+function pintarGraficaInicio() {
+  const cont = $('#grafica-inicio'); if (!cont) return;
+  const a = AGRUPAR.find(x => x.id === ctlSeg.agrupar);
+  dibujarLinea(cont, serieSeguidores().map(p => ({ v: p.v, texto: p.texto })), { idG: 'g-inicio', previo: a.previo });
+}
+function pintarSeguidoresInicio() {
+  const boton = (grupo, id, html, activo, etiqueta) => '<button type="button" class="seg-op ' + (activo ? 'activo' : '') + '" data-grupo="' + grupo + '" data-id="' + id + '"' + (etiqueta ? ' aria-label="' + etiqueta + '" title="' + etiqueta + '"' : '') + ' aria-pressed="' + activo + '">' + html + '</button>';
+  $('#ctl-redes').innerHTML = boton('red', 'total', 'Total', ctlSeg.red === 'total') +
+    REDES.map(r => boton('red', r.id, '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">' + r.icono + '</svg>', ctlSeg.red === r.id, r.nombre)).join('');
+  $('#ctl-rango').innerHTML = RANGOS.map(r => boton('rango', r.id, r.texto, ctlSeg.rango === r.id)).join('');
+  $('#ctl-agrupar').innerHTML = AGRUPAR.map(a => boton('agrupar', a.id, a.texto, ctlSeg.agrupar === a.id)).join('');
+  // cifra grande: valor más reciente y cambio dentro del periodo elegido
+  const serie = serieSeguidores(), nombre = ctlSeg.red === 'total' ? 'Todas las redes' : REDES.find(r => r.id === ctlSeg.red).nombre;
+  const cifra = $('#cifra-seg');
+  if (serie.length) {
+    const ult = serie[serie.length - 1], ini = serie[0], d = ult.v - ini.v, pct = ini.v ? d / ini.v * 100 : 0;
+    cifra.innerHTML = '<strong>' + fmt(ult.v) + '</strong><span class="' + (d > 0 ? 'pos' : d < 0 ? 'neg' : 'neu') + '">' + (d > 0 ? '+' : '') + fmt(d) + ' (' + (d > 0 ? '+' : '') + pct.toFixed(1) + '%)</span><small>' + esc(nombre) + ' · ' + esc((RANGOS.find(r => r.id === ctlSeg.rango) || {}).texto) + '</small>';
+  } else cifra.innerHTML = '<small>Sin datos de ' + esc(nombre) + '</small>';
+  pintarGraficaInicio();
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('.seg-op'); if (!b) return;
+  ctlSeg[b.dataset.grupo] = b.dataset.id;
+  try { localStorage.setItem('seguidores-inicio', JSON.stringify(ctlSeg)); } catch { /* sin almacenamiento */ }
+  pintarSeguidoresInicio();
+});
 function pintarBarrasRedes() {
   const u = datos[datos.length - 1];
   const cont = $('#barras-redes');

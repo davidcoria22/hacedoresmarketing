@@ -6,7 +6,7 @@
   <title>Panel · Hacedores</title>
   <link rel="icon" type="image/jpeg" href="icono-hacedores.jpg">
   <link rel="apple-touch-icon" href="icono-hacedores.jpg">
-  <link rel="stylesheet" href="styles.css?v=rosa13">
+  <link rel="stylesheet" href="styles.css?v=rosa15">
 </head>
 <body data-vista="inicio">
   <div class="lienzo">
@@ -30,10 +30,11 @@
         <div class="grandes" id="grandes"></div>
       </div>
       <div class="rejilla">
-        <section class="tarjeta">
-          <div class="tit"><h3>Seguidores</h3><span class="neu">últimos 7 días</span></div>
-          <div class="cifra-g" id="seg-semana">—</div>
-          <div class="barras-sem" id="barras-sem"></div>
+        <section class="tarjeta seg-grande">
+          <div class="tit"><h3>Seguidores</h3><div class="segmento" id="ctl-redes" role="group" aria-label="Red"></div></div>
+          <div class="cifra-seg" id="cifra-seg"></div>
+          <div class="ctl-fila"><div class="segmento" id="ctl-rango" role="group" aria-label="Rango de fechas"></div><div class="segmento" id="ctl-agrupar" role="group" aria-label="Agrupar por"></div></div>
+          <div class="grafica" id="grafica-inicio"></div>
         </section>
         <section class="tarjeta">
           <div class="tit"><h3>Próximo mensaje</h3></div>
@@ -43,7 +44,7 @@
           <div class="tit"><h3>Mensajes</h3><button class="enlace-claro" data-ir="mensajes">Ver todos</button></div>
           <div id="inicio-msg" class="inicio-msg"></div>
         </section>
-        <section class="tarjeta ancha">
+        <section class="tarjeta">
           <div class="tit"><h3>Seguidores por red</h3><span class="neu">hoy</span></div>
           <div id="barras-redes"></div>
         </section>
@@ -102,7 +103,7 @@
     <section class="conv" id="conv" role="dialog" aria-modal="true" aria-label="Conversación"></section>
   </div>
 
-  <script src="mascotas.js?v=rosa13"></script>
-  <script src="app.js?v=rosa13"></script>
+  <script src="mascotas.js?v=rosa15"></script>
+  <script src="app.js?v=rosa15"></script>
 </body>
 </html>
