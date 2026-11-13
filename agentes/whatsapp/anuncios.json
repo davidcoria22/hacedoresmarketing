@@ -1,0 +1,8 @@
+[
+  {
+    "id": "inventors",
+    "palabras": ["inventor"],
+    "mensaje": "mensaje-inventors.txt",
+    "seguimiento": "mensaje-seguimiento-inventors.txt"
+  }
+]

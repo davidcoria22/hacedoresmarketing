@@ -3,8 +3,18 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const MENSAJE = path.join(__dirname, '..', 'agentes', 'whatsapp', 'mensaje.txt');
-const MENSAJE_SEGUIMIENTO = path.join(__dirname, '..', 'agentes', 'whatsapp', 'mensaje-seguimiento.txt');
+const DIR_MENSAJES = path.join(__dirname, '..', 'agentes', 'whatsapp');
+const leerTexto = archivo => fs.readFileSync(path.join(DIR_MENSAJES, path.basename(archivo)), 'utf8').trim();
+// Cada anuncio puede tener su propio mensaje: agentes/whatsapp/anuncios.json dice qué palabras lo identifican y qué textos usar.
+// Lo que no coincida con ninguno usa mensaje.txt y mensaje-seguimiento.txt (el del curso de impresión 3D).
+const listaAnuncios = () => { try { return JSON.parse(fs.readFileSync(path.join(DIR_MENSAJES, 'anuncios.json'), 'utf8')); } catch { return []; } };
+function elegirAnuncio(m) {
+  const r = m.referral || {};
+  const pajar = [r.headline, r.body, r.source_url, r.source_id, m.text?.body].filter(Boolean).join(' ').toLowerCase();
+  return listaAnuncios().find(a => (a.palabras || []).some(p => pajar.includes(String(p).toLowerCase()))) || null;
+}
+const textosDe = a => ({ mensaje: leerTexto(a?.mensaje || 'mensaje.txt'), seguimiento: leerTexto(a?.seguimiento || 'mensaje-seguimiento.txt') });
+const anuncioPorId = id => listaAnuncios().find(a => a.id === id) || null;
 // Horas para el seguimiento si la persona no responde (0 = sin seguimiento). Es menor a 24 porque pasadas 24 h WhatsApp solo permite plantillas aprobadas.
 const horasSeguimiento = () => (process.env.WHATSAPP_SEGUIMIENTO_HORAS !== undefined && Number(process.env.WHATSAPP_SEGUIMIENTO_HORAS) >= 0 ? Number(process.env.WHATSAPP_SEGUIMIENTO_HORAS) : 23);
 
@@ -70,10 +80,9 @@ async function manejarWhatsApp(req, res, url) {
     if (!clave || a.length !== b.length || !crypto.timingSafeEqual(a, b)) return fin(403, 'No autorizado'), true;
     if (!process.env.WHATSAPP_TOKEN || !process.env.WHATSAPP_PHONE_ID) return fin(500, 'Faltan credenciales de WhatsApp'), true;
     try {
-      const texto = fs.readFileSync(MENSAJE, 'utf8').trim();
-      const seguimiento = fs.readFileSync(MENSAJE_SEGUIMIENTO, 'utf8').trim();
-      const r = await require('./pendientes.js').procesar(async (n, tipo, id) => {
-        const cuerpo = tipo === 'seguimiento' ? seguimiento : texto;
+      const r = await require('./pendientes.js').procesar(async (n, tipo, id, anuncio) => {
+        const t = textosDe(anuncioPorId(anuncio));   // el texto sale según el anuncio del que llegó la persona
+        const cuerpo = tipo === 'seguimiento' ? t.seguimiento : t.mensaje;
         await enviarTexto(n, cuerpo);
         await anotarSalida(id + ':salida', n, cuerpo);   // queda en el historial de la conversación
       });
@@ -97,7 +106,6 @@ async function manejarWhatsApp(req, res, url) {
   }
 
   let datos; try { datos = JSON.parse(crudo.toString('utf8')); } catch { return fin(200), true; }
-  const texto = fs.readFileSync(MENSAJE, 'utf8').trim();
   const puedeEnviar = !!(process.env.WHATSAPP_TOKEN && process.env.WHATSAPP_PHONE_ID);
   const registros = [];
   const contestados = new Set();   // un solo mensaje por persona en cada aviso de Meta
@@ -120,21 +128,24 @@ async function manejarWhatsApp(req, res, url) {
       if (m.from) escribieron.add(m.from);
       const delAnuncio = !!(m.referral && m.from);   // solo contesta a quien llega desde el anuncio
       let respuesta = 'ninguna';
+      const anuncio = delAnuncio ? elegirAnuncio(m) : null;
       if (delAnuncio && !contestados.has(m.from)) {
         contestados.add(m.from);
+        const idAnuncio = anuncio?.id || '';
         if (!puedeEnviar) respuesta = 'sin credenciales';
-        else if (retraso > 0 && process.env.WHATSAPP_CRON_SECRET) { cola.push({ id: m.id, numero: m.from, vence: Date.now() + retraso, tipo: 'primero' }); respuesta = 'programada'; }
+        else if (retraso > 0 && process.env.WHATSAPP_CRON_SECRET) { cola.push({ id: m.id, numero: m.from, vence: Date.now() + retraso, tipo: 'primero', anuncio: idAnuncio }); respuesta = 'programada'; }
         else {
+          const texto = textosDe(anuncio).mensaje;
           try { await enviarTexto(m.from, texto); respuesta = 'enviada'; salidas.push({ id: m.id + ':salida', numero: m.from, texto }); }
           catch (err) { respuesta = 'error'; console.error('whatsapp:', err.message); }
         }
         // seguimiento: solo si hay reloj externo y credenciales; se cancela si la persona vuelve a escribir
-        if (puedeEnviar && process.env.WHATSAPP_CRON_SECRET && horas > 0 && m.id) cola.push({ id: m.id + ':seg', numero: m.from, vence: Date.now() + horas * 3600000, tipo: 'seguimiento' });
+        if (puedeEnviar && process.env.WHATSAPP_CRON_SECRET && horas > 0 && m.id) cola.push({ id: m.id + ':seg', numero: m.from, vence: Date.now() + horas * 3600000, tipo: 'seguimiento', anuncio: idAnuncio });
       }
       registros.push({
         id: m.id || '', red: 'whatsapp', nombre: nombres[m.from] || '', numero: m.from || '', tipo: m.type || '',
         texto: m.text?.body || m.button?.text || m.interactive?.button_reply?.title || m.interactive?.list_reply?.title || '',
-        origen: delAnuncio ? 'anuncio' : 'directo', respuesta
+        origen: delAnuncio ? 'anuncio' + (anuncio ? ':' + anuncio.id : '') : 'directo', respuesta
       });
     }
   }
