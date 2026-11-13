@@ -342,3 +342,23 @@ th { color: var(--suave); font-weight: 500; font-size: 11px; text-transform: upp
 .cifra-seg span { font-size: 14px; font-variant-numeric: tabular-nums; }
 .cifra-seg small { color: var(--suave); font-size: 12px; }
 .ctl-fila { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+
+/* sección Mensajes: columnas negras como la tarjeta del inicio */
+.col-red { background: var(--oscuro); color: #fff; }
+.col-red .cab { color: #fff; }
+.col-red .ct:hover { background: #3a3a38; }
+.col-red .ct .av { background: #444441; color: #fff; }
+.col-red .ct .s { color: #B4B2A9; }
+.col-red .ct .punto.ok { background: #5F5E5A; }
+.col-red .ct.sel { background: #444441; }
+.col-red .sin { color: #B4B2A9; }
+.col-red .lista-col { scrollbar-color: #5F5E5A transparent; }
+.filtros-col { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 6px 10px; border-bottom: .5px solid #444441; margin-bottom: 6px; }
+.filtro-wa { border: 0; border-radius: 999px; padding: 6px 12px; font-size: 12.5px; background: #444441; color: #D3D1C7; cursor: pointer; }
+.filtro-wa small { opacity: .8; margin-left: 2px; font-size: 11px; }
+.filtro-wa:hover { background: #5F5E5A; color: #fff; }
+.filtro-wa.activo { background: var(--rosa); color: #fff; }
+.ct.con-etq { flex-wrap: wrap; }
+.mini-etqs { display: flex; flex-wrap: wrap; gap: 4px; width: 100%; padding-left: 40px; margin-top: -2px; }
+.mini-etq { font-style: normal; font-size: 10.5px; line-height: 1; padding: 3px 8px; border-radius: 999px; background: #444441; color: #D3D1C7; }
+.mini-etq.ok { background: rgba(231, 44, 94, .22); color: #ffb3c6; }
