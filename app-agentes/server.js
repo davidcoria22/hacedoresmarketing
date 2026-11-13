@@ -401,6 +401,16 @@ const manejar = async (req, res) => {
       try { return enviarJSON(res, 200, await require('./meta-ads.js').resumen()); }
       catch (e) { return enviarJSON(res, 502, { error: e.message }); }
     }
+    if (req.method === 'POST' && (url.pathname === '/api/meta-ads/estado' || url.pathname === '/api/meta-ads/presupuesto')) {   // pausar/reactivar o cambiar presupuesto
+      if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra para cambiar los anuncios.' });
+      if (req.headers['x-panel'] !== '1') return enviarJSON(res, 403, { error: 'Solicitud no válida.' });
+      const { id, estado, monto } = await leerCuerpo(req);
+      try {
+        const M = require('./meta-ads.js');
+        const r = url.pathname.endsWith('/estado') ? await M.cambiarEstado(id, estado) : await M.cambiarPresupuesto(id, monto);
+        return enviarJSON(res, 200, r);
+      } catch (e) { return enviarJSON(res, 400, { error: e.message }); }
+    }
     if (url.pathname === '/api/anuncios') {   // mensajes automáticos por anuncio (se editan desde el panel)
       if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra para ver los anuncios.' });
       const An = require('./anuncios.js');

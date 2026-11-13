@@ -366,29 +366,71 @@ async function abrirAnuncios() {
   pintar();
 }
 
-// ---------- anuncios de Facebook e Instagram (solo lectura) ----------
+// ---------- anuncios de Facebook e Instagram: ver, pausar/reactivar y cambiar presupuesto ----------
 async function abrirMetaAds() {
   const m = document.createElement('div');
   m.className = 'modal-ajustes';
-  m.innerHTML = '<div class="modal-caja caja-anuncios"><h3>Anuncios en Meta</h3><div data-cuerpo><p class="neu">Consultando a Meta…</p></div><div class="botones-aj"><span style="flex:1"></span><button type="button" class="sec" data-cerrar>Cerrar</button></div></div>';
+  m.innerHTML = '<div class="modal-caja caja-anuncios caja-meta"><h3>Anuncios en Meta</h3><div data-cuerpo><p class="neu">Consultando a Meta…</p></div><span class="error-msg" data-aviso></span><div class="botones-aj"><span class="neu" data-tope></span><span style="flex:1"></span><button type="button" class="sec" data-cerrar>Cerrar</button></div></div>';
   document.body.appendChild(m);
   const cerrar = () => m.remove();
   m.addEventListener('mousedown', e => { if (e.target === m) cerrar(); });
   m.querySelector('[data-cerrar]').addEventListener('click', cerrar);
   const cuerpo = m.querySelector('[data-cuerpo]');
-  const peso = (x) => x ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: x.moneda || 'MXN', maximumFractionDigits: 2 }).format(x.valor) : '—';
+  const aviso = (t, bien) => { const a = m.querySelector('[data-aviso]'); a.textContent = t || ''; a.style.color = bien ? 'var(--bien)' : ''; };
+  const peso = x => x ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: x.moneda || 'MXN', maximumFractionDigits: 2 }).format(x.valor) : '—';
   const n = v => new Intl.NumberFormat('es-MX').format(v || 0);
-  try {
-    const r = await fetch('/api/meta-ads'); const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(j.error || 'No se pudo consultar.');
-    const vars = j.variables ? Object.entries(j.variables).map(([k, v]) => '<li>' + (v ? '✓' : '✗') + ' ' + esc(k) + '</li>').join('') : '';
-    if (j.error) { cuerpo.innerHTML = '<p class="error-msg">' + esc(j.error) + '</p><ul class="lista-vars">' + vars + '</ul>'; return; }
+  let datos = null; const abiertas = new Set();
+  const llamar = async (ruta, cuerpoJson) => {
+    const r = await fetch(ruta, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-panel': '1' }, body: JSON.stringify(cuerpoJson) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'No se pudo completar.');
+    return j;
+  };
+  const pintar = () => {
+    const j = datos;
+    m.querySelector('[data-tope]').textContent = 'Tope por día: ' + peso({ valor: j.tope, moneda: j.cuenta.moneda });
     cuerpo.innerHTML = '<p class="nota-aj">Cuenta: <b>' + esc(j.cuenta.nombre) + '</b> · ' + esc(j.cuenta.estado) + ' · Gastado hoy: <b>' + peso(j.gastoHoy) + '</b></p>' +
-      (j.campanas.length ? '<div class="tabla-meta"><div class="fila-meta cab-meta"><span>Campaña</span><span>Estado</span><span>Presup./día</span><span>Gasto 7 d</span><span>Alcance</span><span>Mensajes</span></div>' +
-        j.campanas.map(c => '<div class="fila-meta"><span>' + esc(c.nombre) + '</span><span class="' + (c.activa ? 'pos' : 'neu') + '">' + esc(c.estado) + '</span><span>' + peso(c.presupuestoDiario) + '</span><span>' + peso(c.gasto7d) + '</span><span>' + n(c.alcance7d) + '</span><span>' + n(c.mensajes7d) + '</span></div>').join('') + '</div>'
+      (j.campanas.length ? '<div class="tabla-meta"><div class="fila-meta cab-meta"><span>Campaña</span><span>Estado</span><span>Presup./día</span><span>Gasto 7 d</span><span>Alcance</span><span>Mensajes</span><span></span></div>' +
+        j.campanas.map(c => {
+          const abierta = abiertas.has(c.id);
+          const filaC = '<div class="fila-meta"><span>' + (c.conjuntos.length ? '<button type="button" class="enlace-fila" data-abrir="' + esc(c.id) + '">' + (abierta ? '▾ ' : '▸ ') + esc(c.nombre) + '</button>' : esc(c.nombre)) + '</span>' +
+            '<span class="' + (c.activa ? 'pos' : 'neu') + '">' + esc(c.estado) + '</span>' +
+            '<span>' + (c.presupuestoTotal.valor ? peso(c.presupuestoTotal) : '—') + (c.presupuestoEnCampana ? ' <button type="button" class="mini-acc" data-presup="' + esc(c.id) + '" data-nombre="' + esc(c.nombre) + '" data-actual="' + c.presupuestoDiario.valor + '">cambiar</button>' : '') + '</span>' +
+            '<span>' + peso(c.gasto7d) + '</span><span>' + n(c.alcance7d) + '</span><span>' + n(c.mensajes7d) + '</span>' +
+            '<span><button type="button" class="mini-acc ' + (c.activa ? 'peligro' : '') + '" data-estado="' + (c.activa ? 'PAUSED' : 'ACTIVE') + '" data-id="' + esc(c.id) + '" data-nombre="' + esc(c.nombre) + '">' + (c.activa ? 'Pausar' : 'Reactivar') + '</button></span></div>';
+          const subs = abierta ? c.conjuntos.map(x => '<div class="fila-meta sub-meta"><span>↳ ' + esc(x.nombre) + '</span><span class="' + (x.activo ? 'pos' : 'neu') + '">' + esc(x.estado) + '</span><span>' + (x.presupuestoDiario ? peso(x.presupuestoDiario) + ' <button type="button" class="mini-acc" data-presup="' + esc(x.id) + '" data-nombre="' + esc(x.nombre) + '" data-actual="' + x.presupuestoDiario.valor + '">cambiar</button>' : (x.vitalicio ? 'total' : '—')) + '</span><span></span><span></span><span></span><span></span></div>').join('') : '';
+          return filaC + subs;
+        }).join('') + '</div>'
         : '<p class="neu">No hay campañas en esta cuenta.</p>') +
-      '<p class="nota-aj">Solo lectura: desde aquí no se cambia ni se gasta nada.</p>';
-  } catch (e) { cuerpo.innerHTML = '<p class="error-msg">' + esc(e.message) + '</p>'; }
+      '<p class="nota-aj">Pausar o reactivar siempre pide confirmación. Nunca se borra nada, y un presupuesto nunca pasa del tope.</p>';
+    cuerpo.querySelectorAll('[data-abrir]').forEach(b => b.addEventListener('click', () => { const id = b.dataset.abrir; abiertas.has(id) ? abiertas.delete(id) : abiertas.add(id); pintar(); }));
+    cuerpo.querySelectorAll('[data-estado]').forEach(b => b.addEventListener('click', async () => {
+      const act = b.dataset.estado === 'ACTIVE';
+      if (!confirm((act ? 'Reactivar' : 'Pausar') + ' la campaña "' + b.dataset.nombre + '"?' + (act ? '\nEmpezará a gastar su presupuesto diario.' : '\nDejará de mostrarse.'))) return;
+      b.disabled = true; aviso('');
+      try { const r = await llamar('/api/meta-ads/estado', { id: b.dataset.id, estado: b.dataset.estado }); await cargar(); aviso('Listo: "' + r.nombre + '" quedó ' + (act ? 'activa' : 'pausada') + '.', true); }
+      catch (e) { b.disabled = false; aviso(e.message); }
+    }));
+    cuerpo.querySelectorAll('[data-presup]').forEach(b => b.addEventListener('click', async () => {
+      const t = prompt('Nuevo presupuesto diario (en pesos) para "' + b.dataset.nombre + '".\nAhora: $' + b.dataset.actual + ' · Máximo: $' + datos.tope, b.dataset.actual);
+      if (t === null) return;
+      const monto = Number(String(t).replace(/[$,\s]/g, ''));
+      if (!(monto > 0)) { aviso('Escribe un monto válido.'); return; }
+      if (!confirm('Cambiar el presupuesto de "' + b.dataset.nombre + '" de $' + b.dataset.actual + ' a $' + monto + ' al día?')) return;
+      aviso('');
+      try { const r = await llamar('/api/meta-ads/presupuesto', { id: b.dataset.presup, monto }); await cargar(); aviso('Listo: ahora gasta hasta $' + r.ahora + ' al día.', true); }
+      catch (e) { aviso(e.message); }
+    }));
+  };
+  const cargar = async () => {
+    try {
+      const r = await fetch('/api/meta-ads'); const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || 'No se pudo consultar.');
+      if (j.error) { const vars = j.variables ? Object.entries(j.variables).map(([k, v]) => '<li>' + (v ? '✓' : '✗') + ' ' + esc(k) + '</li>').join('') : ''; cuerpo.innerHTML = '<p class="error-msg">' + esc(j.error) + '</p><ul class="lista-vars">' + vars + '</ul>'; return; }
+      datos = j; pintar();
+    } catch (e) { cuerpo.innerHTML = '<p class="error-msg">' + esc(e.message) + '</p>'; }
+  };
+  cargar();
 }
 
 // ---------- último post por red (arriba de la gráfica) ----------
