@@ -499,7 +499,17 @@ function armarConversaciones(lista) {
 }
 const pendiente = c => c.estado !== 'ok';
 const inicial = c => (c.titulo.replace(/[@+•]/g, '').trim().charAt(0) || '?').toUpperCase();
-const vistaPrevia = c => (c.ult.direccion === 'salida' ? 'Respuesta: ' : '') + (c.ult.texto || '[' + (c.ult.tipo || 'mensaje') + ']');
+// Archivos de WhatsApp: etiquetas, vista previa y cómo se dibujan dentro de la conversación
+const NOMBRE_TIPO = { image: 'Imagen', document: 'Documento', audio: 'Audio', video: 'Video', sticker: 'Sticker' };
+const sinTexto = m => m.adjunto ? '' : (NOMBRE_TIPO[m.tipo] ? '[' + NOMBRE_TIPO[m.tipo].toLowerCase() + ' · llegó antes de que el panel guardara archivos]' : '[' + (m.tipo || 'mensaje') + ']');
+const vistaPrevia = c => (c.ult.direccion === 'salida' ? 'Respuesta: ' : '') + (c.ult.texto || (c.ult.adjunto ? (NOMBRE_TIPO[c.ult.adjunto.t] || 'Archivo') + (c.ult.adjunto.n ? ': ' + c.ult.adjunto.n : '') : sinTexto(c.ult)));
+function htmlAdjunto(a) {
+  const u = esc('/api/whatsapp-media?id=' + encodeURIComponent(a.id) + (a.n ? '&n=' + encodeURIComponent(a.n) : ''));
+  if (a.t === 'image' || a.t === 'sticker') return '<a class="adj adj-img" href="' + u + '" target="_blank" rel="noopener" title="Abrir en grande"><img src="' + u + '" alt="' + (a.t === 'sticker' ? 'Sticker' : 'Imagen enviada') + '" loading="lazy"></a>';
+  if (a.t === 'audio') return '<audio class="adj" controls preload="none" src="' + u + '"></audio>';
+  if (a.t === 'video') return '<video class="adj" controls preload="metadata" src="' + u + '"></video>';
+  return '<a class="adj adj-doc" href="' + u + '" download="' + esc(a.n || 'archivo') + '"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M7 3h7l5 5v13H7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3v5h5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg><span>' + esc(a.n || 'Documento') + '</span><small>Descargar</small></a>';
+}
 
 function filaContacto(c) {
   return `<button type="button" class="ct ${c.clave === convActiva ? 'sel' : ''}" data-conv="${esc(c.clave)}">
@@ -554,7 +564,8 @@ function pintarConversacion(desplazar) {
     const salida = m.direccion === 'salida';
     const cls = !salida ? 'cli' : m.origen === 'manual' ? 'yo' : 'ag';
     const quien = !salida ? c.titulo : m.origen === 'manual' ? 'Tú' : 'Agente automático';
-    return `<div class="burbuja-c ${cls}">${esc(m.texto || '[' + (m.tipo || 'mensaje') + ']')}<small>${esc(quien)} · ${esc(hora(m.fecha))}</small></div>`;
+    const texto = m.texto || sinTexto(m);
+    return `<div class="burbuja-c ${cls}">${m.adjunto ? htmlAdjunto(m.adjunto) : ''}${texto ? '<div class="txt-c">' + esc(texto) + '</div>' : ''}<small>${esc(quien)} · ${esc(hora(m.fecha))}</small></div>`;
   }).join('');
   const est = c.estado === 'ok' ? ['Respondido', ''] : c.estado === 'espera' ? ['Respuesta programada', 'p'] : ['Sin respuesta', 'p'];
   cont.innerHTML = `<div class="cab"><span class="av"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">${r.icono}</svg></span>
@@ -564,6 +575,12 @@ function pintarConversacion(desplazar) {
     ${cajaRespuesta(c)}
     <div class="leyenda"><span class="l1">Cliente</span><span class="l2">Agente automático</span><span class="l3">Tú</span></div>`;
   cont.querySelector('.cerrar-conv').addEventListener('click', cerrarConversacion);
+  // si WhatsApp ya no tiene el archivo (los guarda unos 30 días) o pesa demasiado, se avisa en lugar de dejar un hueco roto
+  cont.querySelectorAll('.adj-img img, audio.adj, video.adj').forEach(el => el.addEventListener('error', () => {
+    const nota = document.createElement('span'); nota.className = 'adj-nota';
+    nota.textContent = 'No se puede mostrar este archivo: WhatsApp ya no lo tiene (los guarda unos 30 días) o es muy grande para verlo aquí.';
+    (el.closest('.adj') || el).replaceWith(nota);
+  }, { once: true }));
   const hilo = cont.querySelector('.hilo'); hilo.scrollTop = hilo.scrollHeight;
   activarRespuesta(c, borrador, teniaFoco);
 }

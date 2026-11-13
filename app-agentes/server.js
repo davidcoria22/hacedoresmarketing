@@ -382,6 +382,11 @@ const manejar = async (req, res) => {
       }
       catch (e) { return enviarJSON(res, 502, { error: 'No se pudieron leer los mensajes: ' + e.message }); }
     }
+    if (req.method === 'GET' && url.pathname === '/api/whatsapp-media') {   // fotos, documentos, audios y videos de WhatsApp
+      if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra con tu cuenta.' });
+      try { return await require('./whatsapp.js').servirMedia(url.searchParams.get('id'), url.searchParams.get('n'), res); }
+      catch (e) { return enviarJSON(res, 502, { error: 'No se pudo cargar el archivo: ' + e.message }); }
+    }
     if (req.method === 'POST' && url.pathname === '/api/responder') {   // contestar un WhatsApp desde el panel
       if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra con la contraseña del panel.' });
       if (req.headers['x-panel'] !== '1') return enviarJSON(res, 403, { error: 'Solicitud no válida.' });   // cabecera propia: otras páginas web no pueden mandarla (el navegador las bloquea)

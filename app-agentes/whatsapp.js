@@ -62,6 +62,44 @@ async function responderDesdePanel(ref, texto) {
   return { ok: true };
 }
 
+// Texto de un mensaje de WhatsApp: el escrito o el pie de foto/archivo
+const textoDe = m => m.text?.body || m.button?.text || m.interactive?.button_reply?.title || m.interactive?.list_reply?.title || m.image?.caption || m.document?.caption || m.video?.caption || '';
+// Archivo adjunto (foto, documento, audio, video, sticker): se guarda su id; WhatsApp lo conserva unos 30 días
+const TIPOS_MEDIA = ['image', 'document', 'audio', 'video', 'sticker'];
+function mediaDe(m) {
+  const o = TIPOS_MEDIA.includes(m.type) ? m[m.type] : null;
+  return o && o.id ? JSON.stringify({ t: m.type, id: String(o.id), m: String(o.mime_type || ''), n: String(o.filename || '').slice(0, 120) }) : '';
+}
+
+// Entrega un archivo de WhatsApp al panel (el navegador no puede pedirlo directo: hace falta la clave de WhatsApp).
+// Tope de 4 MB: es lo que permite una respuesta de Vercel. Los archivos que no son imagen/audio/video siempre se descargan, nunca se abren en la página.
+const MIME_EN_LINEA = /^(image\/(jpeg|png|webp|gif)|audio\/(ogg|mpeg|mp4|aac|amr)|video\/(mp4|3gpp))(;|$)/i;
+async function servirMedia(id, nombre, res) {
+  const fin = (c, o) => { res.writeHead(c, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(o)); };
+  if (!/^\d{5,30}$/.test(String(id || ''))) return fin(400, { error: 'Archivo no válido.' });
+  if (!process.env.WHATSAPP_TOKEN) return fin(503, { error: 'Faltan las credenciales de WhatsApp en este servidor.' });
+  if (!(await require('./mensajes.js').mediaConocida(id))) return fin(404, { error: 'Ese archivo no pertenece a ninguna conversación del panel.' });
+  const cab = { Authorization: 'Bearer ' + process.env.WHATSAPP_TOKEN };
+  const info = await fetch('https://graph.facebook.com/v21.0/' + id, { headers: cab, signal: AbortSignal.timeout(8000) });
+  if (!info.ok) return fin(404, { error: 'WhatsApp ya no tiene este archivo (los guarda unos 30 días).' });
+  const meta = await info.json();
+  if (!meta.url) return fin(404, { error: 'WhatsApp no devolvió el archivo.' });
+  if (meta.file_size > 4 * 1024 * 1024) return fin(413, { error: 'El archivo es muy grande para verlo aquí (más de 4 MB). Ábrelo desde la app de WhatsApp.' });
+  const d = await fetch(meta.url, { headers: cab, signal: AbortSignal.timeout(15000) });
+  if (!d.ok) return fin(502, { error: 'No se pudo descargar el archivo.' });
+  const datos = Buffer.from(await d.arrayBuffer());
+  if (datos.length > 4.4 * 1024 * 1024) return fin(413, { error: 'El archivo es muy grande para verlo aquí.' });
+  const mime = /^[a-z]+\/[a-z0-9.+-]+(;.*)?$/i.test(String(meta.mime_type || '')) ? meta.mime_type : 'application/octet-stream';
+  const limpio = String(nombre || '').replace(/[^\p{L}\p{N} ._()-]/gu, '').slice(0, 100);
+  const enLinea = MIME_EN_LINEA.test(mime);
+  res.writeHead(200, {
+    'Content-Type': mime, 'Content-Length': datos.length, 'Cache-Control': 'private, max-age=3600', 'X-Content-Type-Options': 'nosniff',
+    'Content-Security-Policy': "default-src 'none'; sandbox",
+    'Content-Disposition': (enLinea ? 'inline' : 'attachment') + (limpio ? "; filename*=UTF-8''" + encodeURIComponent(limpio) : ''),
+  });
+  res.end(datos);
+}
+
 // Anota en la hoja un mensaje que mandó el agente (para ver la conversación completa). Si falla no afecta al envío.
 async function anotarSalida(id, numero, texto, origen = 'agente') {
   try { await require('./mensajes.js').guardarMensajes([{ id, red: 'whatsapp', nombre: '', numero, tipo: 'text', texto, origen, respuesta: 'enviada', direccion: 'salida' }]); }
@@ -118,7 +156,7 @@ async function manejarWhatsApp(req, res, url) {
     if (c.field === 'smb_message_echoes') {   // lo que respondes tú desde la app WhatsApp Business (coexistencia): se guarda como salida
       for (const m of c.value?.message_echoes || []) {
         if (!m.to) continue;
-        registros.push({ id: m.id || '', red: 'whatsapp', nombre: '', numero: m.to, tipo: m.type || 'text', texto: m.text?.body || m.button?.text || '', origen: 'manual', respuesta: 'enviada', direccion: 'salida' });
+        registros.push({ id: m.id || '', red: 'whatsapp', nombre: '', numero: m.to, tipo: m.type || 'text', texto: textoDe(m), media: mediaDe(m), origen: 'manual', respuesta: 'enviada', direccion: 'salida' });
       }
       continue;
     }
@@ -144,7 +182,7 @@ async function manejarWhatsApp(req, res, url) {
       }
       registros.push({
         id: m.id || '', red: 'whatsapp', nombre: nombres[m.from] || '', numero: m.from || '', tipo: m.type || '',
-        texto: m.text?.body || m.button?.text || m.interactive?.button_reply?.title || m.interactive?.list_reply?.title || '',
+        texto: textoDe(m), media: mediaDe(m),
         origen: delAnuncio ? 'anuncio' + (anuncio ? ':' + anuncio.id : '') : 'directo', respuesta
       });
     }
@@ -168,4 +206,4 @@ async function manejarWhatsApp(req, res, url) {
   return fin(200, 'ok'), true;
 }
 
-module.exports = { manejarWhatsApp, responderDesdePanel };
+module.exports = { manejarWhatsApp, responderDesdePanel, servirMedia };
