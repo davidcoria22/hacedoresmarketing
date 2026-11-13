@@ -308,8 +308,8 @@ function pintarSemana() {
   const ult = datos.slice(-8);
   const cont = $('#barras-sem');
   if (ult.length < 2) { $('#seg-semana').textContent = '—'; cont.innerHTML = ''; return; }
-  const total = r => REDES.reduce((s, x) => s + (r[x.id] || 0), 0);
-  const difs = ult.slice(1).map((d, i) => total(d) - total(ult[i]));
+  // diferencia por red solo cuando hay dato en los dos días (si a una red le falta el dato de un día, no se cuenta como si hubiera perdido todo)
+  const difs = ult.slice(1).map((d, i) => REDES.reduce((s, x) => (d[x.id] != null && ult[i][x.id] != null ? s + d[x.id] - ult[i][x.id] : s), 0));
   const suma = difs.reduce((a, b) => a + b, 0);
   $('#seg-semana').innerHTML = `${suma > 0 ? '+' : ''}${fmt(suma)} <span class="neu">esta semana</span>`;
   const max = Math.max(1, ...difs.map(Math.abs));
@@ -513,8 +513,11 @@ function animarConversacion(entrando) {
   const grande = { transform: 'translate(0, 0) scale(1)', opacity: 1 };
   const cuadros = entrando ? [chico, { ...grande, opacity: 1, offset: .4 }, grande] : [grande, { ...chico, opacity: 0, offset: 1 }];
   if (entrando) cuadros[1] = { opacity: 1, offset: .35 }, cuadros[1].transform = `translate(${dx * .35}px, ${dy * .35}px) scale(${esc + (1 - esc) * .5})`;
-  modal.animate([{ opacity: entrando ? 0 : 1 }, { opacity: entrando ? 1 : 0 }], { duration: entrando ? 320 : 260, easing: 'ease-out' });
-  return caja.animate(cuadros, { duration: entrando ? 520 : 300, easing: entrando ? CURVA_IOS : 'cubic-bezier(.4, 0, .2, 1)' }).finished.catch(() => {});
+  modal.getAnimations({ subtree: true }).forEach(a => a.cancel());   // limpia restos de una animación anterior
+  // Al cerrar se queda en el último cuadro (fill: forwards) hasta ocultar la ventana: así no hay un destello en que reaparece completa
+  const fill = entrando ? 'none' : 'forwards';
+  modal.animate([{ opacity: entrando ? 0 : 1 }, { opacity: entrando ? 1 : 0 }], { duration: entrando ? 320 : 300, easing: 'ease-out', fill });
+  return caja.animate(cuadros, { duration: entrando ? 520 : 300, easing: entrando ? CURVA_IOS : 'cubic-bezier(.4, 0, .2, 1)', fill }).finished.catch(() => {});
 }
 function abrirConversacion(clave) {
   const nueva = $('#modal-conv').hidden;
@@ -527,7 +530,9 @@ async function cerrarConversacion() {
   if (cerrandoConv || $('#modal-conv').hidden) return;
   cerrandoConv = true;
   await Promise.race([animarConversacion(false), new Promise(r => setTimeout(r, 450))]);   // tope por si el navegador pausa la animación
-  convActiva = ''; $('#modal-conv').hidden = true; cerrandoConv = false;
+  convActiva = ''; $('#modal-conv').hidden = true;
+  $('#modal-conv').getAnimations({ subtree: true }).forEach(a => a.cancel());   // ya oculta: se sueltan los últimos cuadros retenidos
+  cerrandoConv = false;
   pintarColumnas(); pintarInicioMensajes();
 }
 $('#modal-conv').addEventListener('mousedown', e => { if (e.target === $('#modal-conv')) cerrarConversacion(); });

@@ -14,12 +14,12 @@
 html, body { min-height: 100%; }
 body {
   margin: 0; color: var(--texto); font-family: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
-  background: #D9D5CD; padding: 18px;
+  background: #D9D5CD; padding: 14px;
 }
 [hidden] { display: none !important; }
 button { font: inherit; color: inherit; }
 .lienzo {
-  max-width: 1180px; margin: 0 auto; min-height: calc(100vh - 36px); border-radius: 32px; padding: 22px 26px 30px;
+  width: 100%; min-height: calc(100vh - 28px); display: flex; flex-direction: column; border-radius: 32px; padding: 24px clamp(20px, 2.6vw, 48px) 32px;
   background: linear-gradient(135deg, #F1EFEA 0%, #FCEFF1 55%, #F8D3DC 100%);
 }
 .neu { color: var(--suave); font-size: 12px; }
@@ -35,6 +35,10 @@ button { font: inherit; color: inherit; }
 .aviso-nav { position: absolute; top: 6px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--rosa); }
 .cab-acc { min-width: 120px; text-align: right; }
 .estado-sistema { font-size: 12px; color: var(--suave); }
+
+/* cada sección ocupa todo el alto disponible de la pantalla */
+.vista:not([hidden]) { flex: 1; display: flex; flex-direction: column; }
+.vista > .rejilla { flex: 1; }
 
 /* encabezados */
 .saludo { margin: 26px 0 2px; font-size: 38px; font-weight: 400; letter-spacing: -.01em; }
@@ -109,7 +113,7 @@ button { font: inherit; color: inherit; }
 .col-red .cab { display: flex; align-items: center; gap: 8px; padding: 2px 6px 8px; font-size: 15px; }
 .col-red .cab svg { width: 20px; height: 20px; }
 .col-red .sin { color: var(--suave); font-size: 13px; padding: 8px 6px; }
-.lista-col { max-height: 360px; overflow-y: auto; scrollbar-width: thin; }
+.lista-col { max-height: max(300px, calc(100vh - 290px)); overflow-y: auto; scrollbar-width: thin; }
 .vacio-msg { color: var(--suave); font-size: 13px; padding: 8px 2px; }
 .acc-msg { display: flex; gap: 6px; }
 .mini-msg { border: 0; background: var(--vidrio); border-radius: 999px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
