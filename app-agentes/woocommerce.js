@@ -35,6 +35,7 @@ async function resumen() {
   const ultimas = [...pedidos].sort((a, b) => b.id - a.id).slice(0, 8).map(p => ({
     id: p.id, fecha: p.date_created_gmt ? p.date_created_gmt + 'Z' : '', total: Number(p.total) || 0, moneda: p.currency || 'MXN',
     productos: (p.line_items || []).map(i => String(i.name || '').slice(0, 80)).filter(Boolean),
+    items: (p.line_items || []).map(i => ({ nombre: String(i.name || '').slice(0, 80), cantidad: Number(i.quantity) || 1 })).filter(i => i.nombre),
   }));
   cache = { t: Date.now(), v: { configurado: true, hoy: suma(deHoy), mes: suma(delMes), ultimas, actualizado: new Date().toISOString() } };
   return cache.v;

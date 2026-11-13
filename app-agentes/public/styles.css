@@ -382,3 +382,5 @@ html.verificando body { visibility: hidden; }
 #burbuja-masc.sin-cola::after { display: none; }
 #burbuja-masc .bub-linea.neu { color: var(--suave); font-size: 12px; }
 #burbuja-masc .bub-red em { margin-left: auto; padding-left: 14px; }
+
+#burbuja-masc .monto-venta { font-size: 20px; font-weight: 500; color: var(--color-masc, var(--rosa)); }

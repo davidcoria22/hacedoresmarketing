@@ -99,11 +99,35 @@ function cara(color, trabaja) {
 let ventas = null;
 const dinero = n => '$' + Number(n || 0).toLocaleString('es-MX', { maximumFractionDigits: 2 });
 const CLAVE_VENTA = 'ventas-ultima-id';
+// Sonido de "caja registradora": se genera en el navegador (no hay archivo de audio). Los navegadores solo dejan sonar después de que tocas la página una vez.
+let audioCtx = null;
+const sonidoActivo = () => { try { return localStorage.getItem('ventas-sonido') !== '0'; } catch { return true; } };
+const AudioNav = window.AudioContext || window.webkitAudioContext;
+function desbloquearAudio() {
+  if (!AudioNav) return;
+  try { audioCtx = audioCtx || new AudioNav(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch { /* sin audio */ }
+}
+['pointerdown', 'keydown'].forEach(e => document.addEventListener(e, desbloquearAudio, { passive: true }));
+function sonidoVenta() {
+  if (!audioCtx || audioCtx.state !== 'running') return false;
+  const t = audioCtx.currentTime;
+  const nota = (f, ini, dur, vol, tipo) => {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = tipo || 'triangle'; o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t + ini); g.gain.exponentialRampToValueAtTime(vol, t + ini + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + ini + dur);
+    o.connect(g); g.connect(audioCtx.destination); o.start(t + ini); o.stop(t + ini + dur + 0.05);
+  };
+  nota(988, 0, 0.16, 0.22); nota(1319, 0.1, 0.55, 0.24); nota(1760, 0.1, 0.65, 0.1, 'sine'); nota(2637, 0.1, 0.35, 0.05, 'sine');   // "ka-ching"
+  return true;
+}
 function anunciarVentas(nuevas) {
   const total = nuevas.reduce((s, o) => s + o.total, 0);
-  const html = '<div class="bub-cab"><b>' + (nuevas.length === 1 ? '¡Nueva venta!' : '¡' + nuevas.length + ' ventas nuevas!') + '</b><span>Ventas de WooCommerce</span></div>' +
-    nuevas.slice(-3).map(o => '<p class="bub-linea"><b>' + esc(o.productos.join(', ') || 'Pedido ' + o.id) + '</b><br>' + dinero(o.total) + '</p>').join('') +
-    (nuevas.length > 1 ? '<p class="bub-pie">Suman ' + dinero(total) + '</p>' : '');
+  const lineas = o => (o.items && o.items.length ? o.items : (o.productos || []).map(n => ({ nombre: n, cantidad: 1 }))).map(i => (i.cantidad > 1 ? i.cantidad + ' × ' : '') + i.nombre).join(', ') || 'Pedido ' + o.id;
+  const sono = sonidoActivo() ? sonidoVenta() : true;
+  const html = '<div class="bub-cab"><b>' + (nuevas.length === 1 ? '¡Se vendió!' : '¡Se hicieron ' + nuevas.length + ' ventas!') + '</b><span>Ventas de WooCommerce</span></div>' +
+    nuevas.slice(-3).map(o => '<p class="bub-linea"><b>' + esc(lineas(o)) + '</b><br><span class="monto-venta">' + dinero(o.total) + '</span></p>').join('') +
+    (nuevas.length > 1 ? '<p class="bub-pie">Total vendido: <b>' + dinero(total) + '</b></p>' : '') +
+    (sono ? '' : '<p class="bub-pie">Toca cualquier parte de la página una vez para que suene el aviso.</p>');
   if (window.Mascotas) Mascotas.anunciar('ventas-woocommerce', html, 12000);
 }
 function revisarVentasNuevas(lista) {
@@ -149,7 +173,7 @@ function burbujaAgente(id) {
       const fila = (t, x) => '<div class="bub-red"><b>' + t + '</b><em>' + x.n + (x.n === 1 ? ' venta' : ' ventas') + ' · ' + dinero(x.total) + '</em></div>';
       const u = (ventas.ultimas || [])[0];
       cuerpo = '<div class="bub-redes">' + fila('Hoy', ventas.hoy) + fila('Este mes', ventas.mes) + '</div>' +
-        (u ? '<p class="bub-linea neu">Última: ' + esc(u.productos.join(', ') || 'Pedido ' + u.id) + ' · ' + dinero(u.total) + (u.fecha ? ' · ' + esc(hace(u.fecha)) : '') + '</p>' : '<p class="bub-linea neu">Todavía no hay ventas este mes.</p>');
+        (u ? '<p class="bub-linea neu">Última: ' + esc((u.items && u.items.length ? u.items.map(i => (i.cantidad > 1 ? i.cantidad + ' × ' : '') + i.nombre) : u.productos).join(', ') || 'Pedido ' + u.id) + ' · ' + dinero(u.total) + (u.fecha ? ' · ' + esc(hace(u.fecha)) : '') + '</p>' : '<p class="bub-linea neu">Todavía no hay ventas este mes.</p>');
     }
   } else if (id === 'whatsapp') {
     const todos = conversaciones.flatMap(c => c.mensajes), hoy = diaLocal(Date.now());
@@ -181,7 +205,8 @@ function abrirPanelMasc() {
   p.innerHTML = '<h4>Tamaño</h4><div class="fila-tam"><input type="range" min="0.5" max="2.5" step="0.1" value="' + pref.escala + '" aria-label="Tamaño de los agentes"><span class="valor-tam">' + Math.round(pref.escala * 100) + '%</span></div>' +
     '<div class="acciones-vis"><button type="button" data-tam="1">Tamaño normal</button></div><div class="sep"></div><h4>Agentes visibles</h4>' +
     '<div class="lista-vis">' + agentes.map(a => '<label class="vis"><input type="checkbox" data-id="' + esc(a.id) + '"' + (pref.ocultos.includes(a.id) ? '' : ' checked') + '><span class="punto-color" style="background:' + esc(coloresMasc[a.id] || '#999') + '"></span>' + esc(a.nombre) + '</label>').join('') + '</div>' +
-    '<div class="acciones-vis"><button type="button" data-todos="1">Mostrar todos</button><button type="button" data-todos="0">Ocultar todos</button></div>';
+    '<div class="acciones-vis"><button type="button" data-todos="1">Mostrar todos</button><button type="button" data-todos="0">Ocultar todos</button></div>' +
+    '<div class="sep"></div><h4>Ventas</h4><label class="vis"><input type="checkbox" id="chk-sonido"' + (sonidoActivo() ? ' checked' : '') + '>Sonido cuando se hace una venta</label><div class="acciones-vis"><button type="button" id="btn-probar-sonido">Probar sonido</button></div>';
   document.body.appendChild(p);
   const r = btn.getBoundingClientRect();
   p.style.left = Math.max(12, Math.min(r.left + scrollX, innerWidth - p.offsetWidth - 12)) + 'px'; p.style.top = (r.bottom + scrollY + 10) + 'px';
@@ -191,6 +216,8 @@ function abrirPanelMasc() {
   p.querySelector('[data-tam]').addEventListener('click', () => { rango.value = 1; Mascotas.cambiarEscala(1); valor.textContent = '100%'; });
   const marcas = [...p.querySelectorAll('input[type=checkbox]')];
   marcas.forEach(i => i.addEventListener('change', () => Mascotas.mostrarAgente(i.dataset.id, i.checked)));
+  p.querySelector('#chk-sonido').addEventListener('change', e => { try { localStorage.setItem('ventas-sonido', e.target.checked ? '1' : '0'); } catch { /* sin almacenamiento */ } });
+  p.querySelector('#btn-probar-sonido').addEventListener('click', () => { desbloquearAudio(); setTimeout(sonidoVenta, 60); });
   p.querySelectorAll('[data-todos]').forEach(b => b.addEventListener('click', () => marcas.forEach(i => { i.checked = b.dataset.todos === '1'; Mascotas.mostrarAgente(i.dataset.id, i.checked); })));
 }
 $('#btn-ajuste-masc').addEventListener('click', e => { e.stopPropagation(); abrirPanelMasc(); });
