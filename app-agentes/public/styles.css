@@ -542,3 +542,21 @@ label.chico { font-size: 12px; color: var(--suave); }
 body[data-vista="mensajes"] .lienzo { background: none; padding: 0; border-radius: 0; min-height: 0; }
 body[data-vista="mensajes"] .msg-app { height: calc(100vh - 28px); min-height: 480px; }
 @media (max-width: 900px) { body[data-vista="mensajes"] .msg-app { height: calc(100vh - 230px); min-height: 460px; } }
+
+/* adjuntar archivos en la caja de respuesta */
+.resp-clip-zona { position: relative; flex: none; align-self: flex-end; }
+.resp .resp-clip { width: 36px; height: 36px; padding: 0; border-radius: 50%; display: grid; place-items: center; background: transparent; color: #B4B2A9; }
+.resp .resp-clip:hover { background: #4a4a47; color: #fff; }
+.resp-caja { padding-left: 6px; }
+.resp-menu { position: absolute; left: 0; bottom: 46px; z-index: 5; min-width: 190px; background: #3a3a38; border-radius: 18px; padding: 6px; box-shadow: 0 12px 30px rgba(0, 0, 0, .4); }
+.resp .resp-menu button { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: none; border-radius: 12px; padding: 9px 12px; font-size: 13.5px; }
+.resp .resp-menu button:hover { background: #4a4a47; }
+.resp-adj { display: flex; align-items: center; gap: 10px; background: #3a3a38; border-radius: 18px; padding: 8px 10px; }
+.resp-adj[hidden] { display: none; }
+.adj-mini { width: 46px; height: 46px; border-radius: 12px; background: #4a4a47; display: grid; place-items: center; overflow: hidden; flex: none; color: #D3D1C7; }
+.adj-mini img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.adj-datos { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.3; }
+.adj-datos b { font-weight: 400; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.adj-datos small { color: #B4B2A9; font-size: 11.5px; }
+.resp .adj-quitar { width: 28px; height: 28px; padding: 0; border-radius: 50%; background: #4a4a47; font-size: 16px; line-height: 1; }
+.conv.arrastrando { outline: 2px dashed var(--rosa); outline-offset: -6px; }

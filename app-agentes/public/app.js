@@ -1061,43 +1061,133 @@ function cajaRespuesta(c) {
   if (!c.ref) return '<p class="resp-nota">Esta conversación es anterior a esta función y no tengo su número completo. Contesta desde la app de WhatsApp.</p>';
   const ultimo = [...c.mensajes].reverse().find(m => m.direccion !== 'salida');
   if (!ultimo || Date.now() - new Date(ultimo.fecha) > 24 * 3600000) return '<p class="resp-nota">Pasaron más de 24 horas desde su último mensaje. WhatsApp solo permite plantillas aprobadas, así que no se puede contestar con texto libre.</p>';
+  const ic = d => `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   return `<div class="resp">
+    <div class="resp-adj" hidden></div>
     <div class="resp-caja">
+      <div class="resp-clip-zona">
+        <button type="button" class="resp-clip" aria-label="Adjuntar" aria-haspopup="menu" aria-expanded="false" title="Adjuntar">${ic('M20 11.5 12.2 19.3a5 5 0 0 1-7-7l8-8a3.3 3.3 0 0 1 4.7 4.7l-8 8a1.7 1.7 0 0 1-2.4-2.4l7.3-7.3')}</button>
+        <div class="resp-menu" role="menu" hidden>
+          <button type="button" role="menuitem" data-tipo="imagen">${ic('M4 6h16v12H4zM4 15l4.5-4.5 3.5 3.5 2.5-2.5L20 16M9 9.5h.01')}<span>Foto o video</span></button>
+          <button type="button" role="menuitem" data-tipo="documento">${ic('M7 3h7l5 5v13H7zM14 3v5h5')}<span>Documento</span></button>
+          <button type="button" role="menuitem" data-tipo="sticker">${ic('M12 3a9 9 0 1 0 9 9c-4.5 0-9-4.5-9-9zM9 11h.01M14 14c-1 1-3 1-4 0')}<span>Sticker</span></button>
+        </div>
+      </div>
       <textarea class="resp-texto" rows="1" maxlength="1000" placeholder="Escribe tu respuesta…" aria-label="Escribe tu respuesta"></textarea>
       <button type="button" class="resp-enviar" aria-label="Enviar" title="Enviar (Enter)"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 19V6M6 11.5 12 5.5l6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
-    <div class="resp-pie"><span class="resp-error" role="alert"></span><small class="resp-ayuda">Enter envía · Mayús + Enter hace un salto de línea</small></div>
+    <input type="file" class="resp-archivo" hidden>
+    <div class="resp-pie"><span class="resp-error" role="alert"></span><small class="resp-ayuda">Enter envía · Mayús + Enter salto de línea · también puedes pegar o arrastrar archivos</small></div>
   </div>`;
 }
-let enfocarRespuesta = false;   // después de enviar, el cursor vuelve a la caja para seguir escribiendo
+// ---- archivos para enviar (hasta 4 MB: es lo que recibe el servidor en línea) ----
+const MAX_ARCHIVO = 4 * 1024 * 1024, MAX_STICKER = 500 * 1024;
+const MIME_DOC = { pdf: 'application/pdf', txt: 'text/plain', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' };
+const ACEPTA = { imagen: 'image/jpeg,image/png,image/webp,video/mp4,video/3gpp', documento: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt', sticker: 'image/webp' };
+const pesoTexto = b => b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+let adjuntoPend = null;   // { clave, blob, nombre, tipo, mime, vista }: lo elegido para enviar; se conserva si la conversación se refresca sola
+async function prepararImagen(archivo) {   // las fotos del celular pesan mucho: se reducen y se pasan a JPG para que quepan
+  if ((archivo.type === 'image/jpeg' || archivo.type === 'image/png') && archivo.size <= 1.5 * 1048576) return archivo;
+  let bmp; try { bmp = await createImageBitmap(archivo); } catch { throw new Error('No pude leer esa imagen. Usa un JPG o PNG.'); }
+  const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height)), lienzo = document.createElement('canvas');
+  lienzo.width = Math.round(bmp.width * k); lienzo.height = Math.round(bmp.height * k);
+  const g = lienzo.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, lienzo.width, lienzo.height); g.drawImage(bmp, 0, 0, lienzo.width, lienzo.height);
+  const aJpg = q => new Promise(r => lienzo.toBlob(r, 'image/jpeg', q));
+  let q = .85, blob = await aJpg(q);
+  while (blob && blob.size > 3.5 * 1048576 && q > .4) { q -= .15; blob = await aJpg(q); }
+  if (!blob) throw new Error('No pude preparar esa imagen.');
+  return blob;
+}
+async function validarArchivo(archivo, tipoPedido) {   // devuelve { blob, tipo, mime, nombre } o lanza un error entendible
+  let tipo = tipoPedido, mime = archivo.type, nombre = archivo.name || 'archivo';
+  const ext = (nombre.split('.').pop() || '').toLowerCase();
+  if (tipo === 'imagen' && mime.startsWith('video/')) tipo = 'video';
+  if (tipo === 'imagen') {
+    if (!mime.startsWith('image/')) throw new Error('Elige una foto (JPG o PNG) o un video (MP4).');
+    const blob = await prepararImagen(archivo);
+    if (blob !== archivo) nombre = nombre.replace(/\.[^.]+$/, '') + '.jpg';
+    return { blob, tipo, mime: blob.type || 'image/jpeg', nombre };
+  }
+  if (tipo === 'video') {
+    if (mime !== 'video/mp4' && mime !== 'video/3gpp') throw new Error('Los videos deben ser MP4 o 3GP.');
+    if (archivo.size > MAX_ARCHIVO) throw new Error('Ese video pesa ' + pesoTexto(archivo.size) + '. Por ahora el máximo es 4 MB.');
+    return { blob: archivo, tipo, mime, nombre };
+  }
+  if (tipo === 'sticker') {
+    if (mime !== 'image/webp') throw new Error('Los stickers deben ser archivos WebP.');
+    if (archivo.size > MAX_STICKER) throw new Error('Ese sticker pesa ' + pesoTexto(archivo.size) + '. Debe pesar menos de 500 KB.');
+    return { blob: archivo, tipo, mime, nombre };
+  }
+  mime = MIME_DOC[ext] || (Object.values(MIME_DOC).includes(mime) ? mime : '');
+  if (!mime) throw new Error('Ese tipo de documento no se puede enviar. Usa PDF, Word, Excel, PowerPoint o texto.');
+  if (archivo.size > MAX_ARCHIVO) throw new Error('Ese archivo pesa ' + pesoTexto(archivo.size) + '. Por ahora el máximo es 4 MB.');
+  return { blob: archivo, tipo: 'documento', mime, nombre };
+}
 function activarRespuesta(c, borrador, teniaFoco) {
   const cont = enMensajes() ? $('#chat-panel') : $('#conv');
   const caja = cont.querySelector('.resp');
   if (!caja) return;
   const texto = caja.querySelector('.resp-texto'), enviar = caja.querySelector('.resp-enviar'), error = caja.querySelector('.resp-error');
+  const barra = caja.querySelector('.resp-adj'), clip = caja.querySelector('.resp-clip'), menu = caja.querySelector('.resp-menu'), entrada = caja.querySelector('.resp-archivo');
   texto.value = borrador;
   const ajustarAlto = () => { texto.style.height = 'auto'; texto.style.height = Math.min(texto.scrollHeight, 120) + 'px'; };
   ajustarAlto();
   if (teniaFoco || enfocarRespuesta) { texto.focus(); enfocarRespuesta = false; }
+  if (adjuntoPend && adjuntoPend.clave !== c.clave) { if (adjuntoPend.vista) URL.revokeObjectURL(adjuntoPend.vista); adjuntoPend = null; }   // cambiaste de conversación: no se manda a otra persona
+  const pintarAdjunto = () => {
+    if (!adjuntoPend) { barra.hidden = true; barra.innerHTML = ''; return; }
+    const a = adjuntoPend, ico = { video: 'M5 6h10v12H5zM15 10l5-3v10l-5-3', documento: 'M7 3h7l5 5v13H7zM14 3v5h5' }[a.tipo];
+    barra.hidden = false;
+    barra.innerHTML = `<span class="adj-mini">${a.vista ? `<img src="${esc(a.vista)}" alt="">` : `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="${ico || ''}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`}</span><span class="adj-datos"><b>${esc(a.nombre)}</b><small>${esc({ imagen: 'Foto', video: 'Video', documento: 'Documento', sticker: 'Sticker' }[a.tipo])} · ${pesoTexto(a.blob.size)}${a.tipo === 'sticker' ? '' : ' · escribe un mensaje si quieres acompañarlo'}</small></span><button type="button" class="adj-quitar" aria-label="Quitar archivo">×</button>`;
+    barra.querySelector('.adj-quitar').addEventListener('click', () => { if (a.vista) URL.revokeObjectURL(a.vista); adjuntoPend = null; pintarAdjunto(); texto.focus(); });
+  };
+  pintarAdjunto();
   let enviando = false;
-  const ocupado = si => { enviando = si; texto.readOnly = si; enviar.disabled = si; caja.classList.toggle('enviando', si); };
+  const ocupado = si => { enviando = si; texto.readOnly = si; enviar.disabled = si; clip.disabled = si; caja.classList.toggle('enviando', si); };
+  async function elegir(archivo, tipo) {
+    error.textContent = '';
+    try {
+      const v = await validarArchivo(archivo, tipo);
+      if (adjuntoPend && adjuntoPend.vista) URL.revokeObjectURL(adjuntoPend.vista);
+      adjuntoPend = { clave: c.clave, ...v, vista: v.tipo === 'imagen' || v.tipo === 'sticker' ? URL.createObjectURL(v.blob) : '' };
+      pintarAdjunto(); texto.focus();
+    } catch (e) { error.textContent = e.message; }
+  }
+  const cerrarMenu = () => { menu.hidden = true; clip.setAttribute('aria-expanded', 'false'); };
+  clip.addEventListener('click', () => { const abrir = menu.hidden; menu.hidden = !abrir; clip.setAttribute('aria-expanded', String(abrir)); });
+  document.addEventListener('pointerdown', function fuera(e) { if (!caja.isConnected) { document.removeEventListener('pointerdown', fuera); return; } if (!e.target.closest('.resp-clip-zona')) cerrarMenu(); });
+  menu.querySelectorAll('[data-tipo]').forEach(b => b.addEventListener('click', () => { cerrarMenu(); entrada.accept = ACEPTA[b.dataset.tipo]; entrada.dataset.tipo = b.dataset.tipo; entrada.value = ''; entrada.click(); }));
+  entrada.addEventListener('change', () => { if (entrada.files[0]) elegir(entrada.files[0], entrada.dataset.tipo); });
+  texto.addEventListener('paste', e => { const f = [...(e.clipboardData ? e.clipboardData.files : [])][0]; if (f) { e.preventDefault(); elegir(f, f.type.startsWith('video/') ? 'video' : f.type.startsWith('image/') ? 'imagen' : 'documento'); } });
+  const zona = cont;
+  zona.ondragover = e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); zona.classList.add('arrastrando'); } };
+  zona.ondragleave = e => { if (e.target === zona) zona.classList.remove('arrastrando'); };
+  zona.ondrop = e => { zona.classList.remove('arrastrando'); const f = e.dataTransfer && e.dataTransfer.files[0]; if (!f) return; e.preventDefault(); elegir(f, f.type.startsWith('video/') ? 'video' : f.type.startsWith('image/') ? 'imagen' : 'documento'); };
   async function mandar() {
     if (enviando) return;
     error.textContent = '';
-    if (!texto.value.trim()) { error.textContent = 'Escribe un mensaje primero.'; return; }
+    if (!adjuntoPend && !texto.value.trim()) { error.textContent = 'Escribe un mensaje primero.'; return; }
     ocupado(true);
     try {
-      const r = await fetch('/api/responder', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-panel': '1' }, body: JSON.stringify({ ref: c.ref, texto: texto.value }) });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) { ocupado(false); error.textContent = r.status === 401 ? 'Tu sesión venció. Entra de nuevo.' : (j.error || 'No se pudo enviar.'); return; }
-      texto.value = ''; enfocarRespuesta = true;
-      await cargarMensajes();   // vuelve a dibujar la conversación con tu mensaje ya incluido
+      let r, j;
+      if (adjuntoPend) {
+        const a = adjuntoPend;
+        r = await fetch('/api/enviar-archivo?ref=' + encodeURIComponent(c.ref) + '&tipo=' + a.tipo + '&nombre=' + encodeURIComponent(a.nombre) + '&pie=' + encodeURIComponent(a.tipo === 'sticker' ? '' : texto.value.trim()), { method: 'POST', headers: { 'Content-Type': a.mime, 'x-panel': '1' }, body: a.blob });
+      } else {
+        r = await fetch('/api/responder', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-panel': '1' }, body: JSON.stringify({ ref: c.ref, texto: texto.value }) });
+      }
+      j = await r.json().catch(() => ({}));
+      if (!r.ok) { ocupado(false); error.textContent = r.status === 401 ? 'Tu sesión venció. Entra de nuevo.' : r.status === 413 ? 'El archivo es muy grande. Por ahora el máximo es 4 MB.' : (j.error || 'No se pudo enviar.'); return; }
+      if (adjuntoPend && adjuntoPend.vista) URL.revokeObjectURL(adjuntoPend.vista);
+      adjuntoPend = null; texto.value = ''; enfocarRespuesta = true;
+      await cargarMensajes(true);   // vuelve a dibujar la conversación con tu mensaje ya incluido
     } catch { ocupado(false); error.textContent = 'Sin conexión con el servidor.'; }
   }
   enviar.addEventListener('click', mandar);
   texto.addEventListener('input', ajustarAlto);
   texto.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); mandar(); } });
 }
+let enfocarRespuesta = false;   // después de enviar, el cursor vuelve a la caja para seguir escribiendo
 // Animación tipo iOS: la ventana crece desde el contacto que tocaste y, al cerrar, regresa a él (FLIP con curva de resorte suave)
 const CURVA_IOS = 'cubic-bezier(.32, .72, 0, 1)';
 const sinMovimiento = () => window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;

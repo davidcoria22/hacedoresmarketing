@@ -34,20 +34,83 @@ async function enviarTexto(para, texto) {
   try { return JSON.parse(cuerpo).messages?.[0]?.id || ''; } catch { return ''; }   // id del mensaje enviado
 }
 
+// Comprobaciones comunes antes de contestar desde el panel: credenciales, que tengamos el número y la ventana de 24 h
+async function contactoParaResponder(ref) {
+  if (!process.env.WHATSAPP_TOKEN || !process.env.WHATSAPP_PHONE_ID) return { codigo: 503, error: 'Faltan las credenciales de WhatsApp en este servidor.' };
+  const c = await require('./mensajes.js').buscarContacto(ref);
+  if (!c) return { codigo: 404, error: 'No tengo el número de esta conversación (es anterior a esta función). Responde desde la app de WhatsApp.' };
+  if (Date.now() - c.ultimaEntrada > 24 * 3600000) return { codigo: 409, error: 'Pasaron más de 24 horas desde su último mensaje. WhatsApp solo permite plantillas aprobadas.' };
+  return { c };
+}
+
 // Respuesta escrita por una persona desde el panel. Devuelve { ok } o { error, codigo }.
 async function responderDesdePanel(ref, texto, autor = '') {
   texto = String(texto || '').trim();
   if (!texto) return { codigo: 400, error: 'Escribe un mensaje.' };
   if (texto.length > 1000) return { codigo: 400, error: 'El mensaje es muy largo (máximo 1000 caracteres).' };
-  if (!process.env.WHATSAPP_TOKEN || !process.env.WHATSAPP_PHONE_ID) return { codigo: 503, error: 'Faltan las credenciales de WhatsApp en este servidor.' };
-  const c = await require('./mensajes.js').buscarContacto(ref);
-  if (!c) return { codigo: 404, error: 'No tengo el número de esta conversación (es anterior a esta función). Responde desde la app de WhatsApp.' };
-  if (Date.now() - c.ultimaEntrada > 24 * 3600000) return { codigo: 409, error: 'Pasaron más de 24 horas desde su último mensaje. WhatsApp solo permite plantillas aprobadas.' };
+  const previo = await contactoParaResponder(ref);
+  if (previo.error) return previo;
+  const c = previo.c;
   let id;
   try { id = await enviarTexto(c.numero, texto); }
   catch (e) { console.error('responder:', e.message); return { codigo: 502, error: 'WhatsApp no aceptó el mensaje: ' + String(e.message).replace(/^WhatsApp \d+ /, '').slice(0, 160) }; }
   await anotarSalida(id || 'panel:' + Date.now(), c.numero, texto, 'manual', autor);   // queda en la conversación como respuesta tuya
   if (process.env.WHATSAPP_CRON_SECRET) { try { await require('./pendientes.js').cancelarSeguimientos([c.numero]); } catch { /* sin cola */ } }   // si una persona ya conversa, no sale el seguimiento automático
+  return { ok: true };
+}
+
+// ---- enviar fotos, videos, documentos y stickers desde el panel ----
+// Vercel solo recibe cuerpos de hasta ~4.5 MB, por eso el tope es 4 MB por archivo. Lo que no está en esta lista no se envía.
+const LIMITE_ARCHIVO = 4 * 1024 * 1024;
+const DOCS = ['application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'];
+const TIPOS_ENVIO = {
+  imagen: { api: 'image', mimes: ['image/jpeg', 'image/png'], max: LIMITE_ARCHIVO, pie: true, nombre: 'La foto' },
+  video: { api: 'video', mimes: ['video/mp4', 'video/3gpp'], max: LIMITE_ARCHIVO, pie: true, nombre: 'El video' },
+  documento: { api: 'document', mimes: DOCS, max: LIMITE_ARCHIVO, pie: true, nombre: 'El documento' },
+  sticker: { api: 'sticker', mimes: ['image/webp'], max: 500 * 1024, pie: false, nombre: 'El sticker' },
+};
+async function subirMedia(datos, mime, nombre) {
+  const fd = new FormData();
+  fd.append('messaging_product', 'whatsapp'); fd.append('type', mime);
+  fd.append('file', new Blob([datos], { type: mime }), nombre);
+  const r = await fetch(`https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_ID}/media`, { method: 'POST', headers: { Authorization: 'Bearer ' + process.env.WHATSAPP_TOKEN }, body: fd, signal: AbortSignal.timeout(25000) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || !j.id) throw new Error('WhatsApp ' + r.status + ' ' + String(j.error?.message || '').slice(0, 160));
+  return String(j.id);
+}
+async function enviarMedia(para, api, id, pie, nombre) {
+  const objeto = { id };
+  if (pie && api !== 'sticker' && api !== 'audio') objeto.caption = pie;
+  if (api === 'document') objeto.filename = nombre;
+  const r = await fetch(`https://graph.facebook.com/v21.0/${process.env.WHATSAPP_PHONE_ID}/messages`, {
+    method: 'POST', headers: { Authorization: 'Bearer ' + process.env.WHATSAPP_TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ messaging_product: 'whatsapp', to: para, type: api, [api]: objeto }), signal: AbortSignal.timeout(15000),
+  });
+  const cuerpo = await r.text();
+  if (!r.ok) throw new Error('WhatsApp ' + r.status + ' ' + cuerpo.slice(0, 200));
+  try { return JSON.parse(cuerpo).messages?.[0]?.id || ''; } catch { return ''; }
+}
+// d = { tipo: 'imagen'|'video'|'documento'|'sticker', mime, nombre, datos: Buffer, pie }. Devuelve { ok } o { error, codigo }.
+async function enviarArchivoDesdePanel(ref, d, autor = '') {
+  const t = TIPOS_ENVIO[d.tipo];
+  if (!t) return { codigo: 400, error: 'Tipo de archivo no válido.' };
+  const mime = String(d.mime || '').split(';')[0].trim().toLowerCase();
+  if (!t.mimes.includes(mime)) return { codigo: 415, error: t.nombre + ' no es de un formato que WhatsApp acepte' + (d.tipo === 'imagen' ? ' (solo JPG o PNG).' : d.tipo === 'video' ? ' (solo MP4 o 3GP).' : d.tipo === 'sticker' ? ' (solo WebP).' : ' (PDF, Word, Excel, PowerPoint o texto).') };
+  const datos = d.datos;
+  if (!Buffer.isBuffer(datos) || !datos.length) return { codigo: 400, error: 'No llegó el archivo.' };
+  if (datos.length > t.max) return { codigo: 413, error: t.nombre + ' pesa más de ' + Math.round(t.max / 1024 / 1024 * 10) / 10 + ' MB.' + (d.tipo === 'sticker' ? ' Los stickers deben ser chicos.' : ' Por ahora el máximo es 4 MB.') };
+  const nombre = String(d.nombre || 'archivo').replace(/[^\p{L}\p{N} ._()-]/gu, '').slice(0, 100) || 'archivo';
+  const pie = t.pie ? String(d.pie || '').trim().slice(0, 1000) : '';
+  const previo = await contactoParaResponder(ref);
+  if (previo.error) return previo;
+  const c = previo.c;
+  let idMedia, idMensaje;
+  try { idMedia = await subirMedia(datos, mime, nombre); }
+  catch (e) { console.error('archivo (subir):', e.message); return { codigo: 502, error: 'WhatsApp no aceptó el archivo: ' + String(e.message).replace(/^WhatsApp \d+ /, '').slice(0, 160) }; }
+  try { idMensaje = await enviarMedia(c.numero, t.api, idMedia, pie, nombre); }
+  catch (e) { console.error('archivo (enviar):', e.message); return { codigo: 502, error: 'WhatsApp no aceptó el mensaje: ' + String(e.message).replace(/^WhatsApp \d+ /, '').slice(0, 160) }; }
+  await anotarSalida(idMensaje || 'panel:' + Date.now(), c.numero, pie, 'manual', autor, { tipo: t.api, media: JSON.stringify({ t: t.api, id: idMedia, m: mime, n: t.api === 'document' ? nombre : '' }) });
+  if (process.env.WHATSAPP_CRON_SECRET) { try { await require('./pendientes.js').cancelarSeguimientos([c.numero]); } catch { /* sin cola */ } }
   return { ok: true };
 }
 
@@ -94,8 +157,8 @@ async function servirMedia(id, nombre, res) {
 }
 
 // Anota en la hoja un mensaje que mandó el agente (para ver la conversación completa). Si falla no afecta al envío.
-async function anotarSalida(id, numero, texto, origen = 'agente', autor = '') {
-  try { await require('./mensajes.js').guardarMensajes([{ id, red: 'whatsapp', nombre: '', numero, tipo: 'text', texto, origen, respuesta: 'enviada', direccion: 'salida', autor }]); }
+async function anotarSalida(id, numero, texto, origen = 'agente', autor = '', extra = {}) {
+  try { await require('./mensajes.js').guardarMensajes([{ id, red: 'whatsapp', nombre: '', numero, tipo: 'text', texto, origen, respuesta: 'enviada', direccion: 'salida', autor, ...extra }]); }
   catch (err) { console.error('mensajes: no se pudo anotar el envío:', err.message); }
 }
 
@@ -199,4 +262,4 @@ async function manejarWhatsApp(req, res, url) {
   return fin(200, 'ok'), true;
 }
 
-module.exports = { manejarWhatsApp, responderDesdePanel, servirMedia };
+module.exports = { manejarWhatsApp, responderDesdePanel, enviarArchivoDesdePanel, servirMedia, LIMITE_ARCHIVO };

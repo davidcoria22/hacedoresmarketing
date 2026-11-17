@@ -341,6 +341,16 @@ function leerCuerpo(req) {
 const TIPOS = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'application/javascript; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.ico': 'image/x-icon', '.svg': 'image/svg+xml' };
 const BINARIOS = new Set(['.png', '.jpg', '.jpeg', '.ico']);   // imágenes: se envían tal cual, sin leerlas como texto
 
+// Cuerpo binario (archivos a enviar). Se corta si pasa del límite para no llenar la memoria.
+function leerBinario(req, max) {
+  return new Promise(resolve => {
+    const trozos = []; let total = 0, excedido = false;
+    req.on('data', c => { total += c.length; if (total > max) { excedido = true; return; } trozos.push(c); });
+    req.on('end', () => resolve(excedido ? null : Buffer.concat(trozos)));
+    req.on('error', () => resolve(null));
+  });
+}
+
 const manejar = async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   try {
@@ -425,6 +435,21 @@ const manejar = async (req, res) => {
         const u = auth.usuarioGoogle(req);   // quién escribe: el nombre de su cuenta de Google (en local, sin nombre)
         const autor = u ? (u.nombre || String(u.email).split('@')[0]) : '';
         const r = await require('./whatsapp.js').responderDesdePanel(ref, texto, autor);
+        return enviarJSON(res, r.codigo || 200, r.ok ? { ok: true } : { error: r.error });
+      } catch (e) { return enviarJSON(res, 502, { error: 'No se pudo enviar: ' + e.message }); }
+    }
+    if (req.method === 'POST' && url.pathname === '/api/enviar-archivo') {   // fotos, videos, documentos y stickers por WhatsApp
+      if (!puede('responder')) return niega();
+      if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra con tu cuenta.' });
+      if (req.headers['x-panel'] !== '1') return enviarJSON(res, 403, { error: 'Solicitud no válida.' });
+      const W = require('./whatsapp.js');
+      const datos = await leerBinario(req, W.LIMITE_ARCHIVO + 1024);
+      if (datos === null) return enviarJSON(res, 413, { error: 'El archivo es muy grande. Por ahora el máximo es 4 MB.' });
+      try {
+        const u = auth.usuarioGoogle(req);
+        const autor = u ? (u.nombre || String(u.email).split('@')[0]) : '';
+        const q = url.searchParams;
+        const r = await W.enviarArchivoDesdePanel(q.get('ref'), { tipo: q.get('tipo'), nombre: q.get('nombre'), pie: q.get('pie'), mime: req.headers['content-type'], datos }, autor);
         return enviarJSON(res, r.codigo || 200, r.ok ? { ok: true } : { error: r.error });
       } catch (e) { return enviarJSON(res, 502, { error: 'No se pudo enviar: ' + e.message }); }
     }
