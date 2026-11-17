@@ -24,9 +24,17 @@ async function leerFilas(h, token) {
   if (r.status !== 200) throw new Error('Google Sheets respondió ' + r.status);
   return JSON.parse(r.body).values || [];
 }
+let cacheCola = { t: 0, filas: null };   // solo para mostrar en el panel; enviar y cancelar siempre leen la hoja al momento
+async function filasCola(h, token) {
+  if (cacheCola.filas && Date.now() - cacheCola.t < 4000) return cacheCola.filas;
+  const f = await leerFilas(h, token);
+  cacheCola = { t: Date.now(), filas: f };
+  return f;
+}
 const tipoDe = f => f[6] || 'primero';   // las filas anteriores a los seguimientos no tienen tipo
 
 async function guardarFilas(h, token, datos) {
+  cacheCola.t = 0;
   const r = await h.petición('POST', base(h) + '/values:batchUpdate', JSON.stringify({ valueInputOption: 'RAW', data: datos }), cabeceras(token));
   if (r.status !== 200) throw new Error('Google Sheets respondió ' + r.status + ' al guardar');
 }
@@ -43,6 +51,7 @@ async function agregar(items) {
   if (!nuevas.length) return 0;
   const r = await h.petición('POST', rango(h, 'A:H') + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS', JSON.stringify({ values: nuevas }), cabeceras(token));
   if (r.status !== 200) throw new Error('Google Sheets respondió ' + r.status);
+  cacheCola.t = 0;
   return nuevas.length;
 }
 
@@ -92,7 +101,7 @@ async function procesar(enviar, ahora = Date.now(), maximo = 20) {
 // Para el panel: cuántos envíos esperan y a qué hora vence el próximo mensaje del curso.
 async function resumen() {
   const h = ayudas(), token = await h.tokenGoogle('spreadsheets.readonly');
-  const filas = (await leerFilas(h, token)) || [];
+  const filas = (await filasCola(h, token)) || [];
   const pend = filas.filter(f => f[3] === 'pendiente');
   const vencen = pend.filter(f => tipoDe(f) === 'primero').map(f => Date.parse(f[2])).filter(n => !isNaN(n));
   return { pendientes: pend.length, proximo: vencen.length ? new Date(Math.min(...vencen)).toISOString() : '' };
@@ -101,7 +110,7 @@ async function resumen() {
 // id -> 'pendiente' | 'enviado' | 'error' (para mostrarlo en la tarjeta de mensajes; solo el mensaje principal)
 async function estados() {
   const h = ayudas(), token = await h.tokenGoogle('spreadsheets.readonly');
-  const filas = await leerFilas(h, token);
+  const filas = await filasCola(h, token);
   return Object.fromEntries((filas || []).filter(f => tipoDe(f) === 'primero').map(f => [f[0], f[3]]));
 }
 

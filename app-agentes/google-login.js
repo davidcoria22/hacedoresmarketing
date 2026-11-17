@@ -12,12 +12,9 @@ const auth = require('./auth.js');
 const ID = () => process.env.GOOGLE_CLIENT_ID || '';
 const lista = t => String(t || '').split(/[,;\s]+/).map(x => x.trim().toLowerCase()).filter(Boolean);
 
-function permitido(email) {
-  email = String(email || '').toLowerCase();
-  if (!email) return false;
-  if (lista(process.env.AUTH_EMAILS).includes(email)) return true;
-  const dominio = email.split('@')[1];
-  return !!dominio && lista(process.env.AUTH_DOMINIOS).includes(dominio);
+// ¿Esta cuenta puede entrar? Lo decide usuarios.js: administradores de Vercel, personas agregadas en el panel o dominio autorizado
+async function permitido(email) {
+  try { return !!(await require('./usuarios.js').acceso(email)); } catch (e) { console.error('google-login: no se pudo comprobar el acceso:', e.message); return false; }
 }
 const base = req => (process.env.AUTH_URL || ('https://' + (req.headers['x-forwarded-host'] || req.headers.host))).replace(/\/+$/, '');
 const seguro = req => (req.headers['x-forwarded-proto'] || '') === 'https' || /^https:/i.test(process.env.AUTH_URL || '');
@@ -30,11 +27,15 @@ const b64 = t => String(t).replace(/-/g, '+').replace(/_/g, '/');
 async function manejarGoogle(req, res, url, { modoPublico }) {
   // ¿quién soy? La página lo consulta al abrir: 401 = hay que entrar con Google
   if (url.pathname === '/api/yo') {
-    if (!modoPublico) return json(res, 200, { local: true }), true;
-    if (!auth.googleActivo()) return json(res, 200, { abierto: true }), true;
+    const U = require('./usuarios.js');
+    if (!modoPublico) return json(res, 200, { local: true, rol: 'Administrador', permisos: U.IDS }), true;
+    if (!auth.googleActivo()) return json(res, 200, { abierto: true, rol: 'Administrador', permisos: U.IDS }), true;
     const u = auth.usuarioGoogle(req);
     if (!u) return json(res, 401, { requiereLogin: true }, { 'X-Login': '/entrar.html' }), true;
-    return json(res, 200, { google: true, email: u.email, nombre: u.nombre, foto: u.foto }), true;
+    let acc = null;
+    try { acc = await U.acceso(u.email); } catch (e) { return json(res, 503, { error: 'No pude comprobar tus permisos: ' + e.message }), true; }
+    if (!acc) return json(res, 401, { requiereLogin: true, sinAcceso: true }, { 'X-Login': '/entrar.html', 'Set-Cookie': auth.cookieGoogleBorrar(seguro(req)) }), true;
+    return json(res, 200, { google: true, email: u.email, nombre: u.nombre, foto: u.foto, rol: acc.rol, permisos: [...acc.permisos] }), true;
   }
 
   if (url.pathname === '/api/auth/google') {
@@ -67,7 +68,7 @@ async function manejarGoogle(req, res, url, { modoPublico }) {
       const p = JSON.parse(Buffer.from(b64(t.id_token.split('.')[1]), 'base64').toString('utf8'));
       const emisorOk = p.iss === 'https://accounts.google.com' || p.iss === 'accounts.google.com';
       if (!emisorOk || p.aud !== ID() || !(p.exp * 1000 > Date.now()) || p.nonce !== nonce || p.email_verified !== true) return fallo('fallo'), true;
-      if (!permitido(p.email)) { console.error('google-login: cuenta sin acceso:', String(p.email).replace(/^(.).*(@.*)$/, '$1***$2')); return fallo('cuenta'), true; }
+      if (!(await permitido(p.email))) { console.error('google-login: cuenta sin acceso:', String(p.email).replace(/^(.).*(@.*)$/, '$1***$2')); return fallo('cuenta'), true; }
       return volver(res, '/', [auth.cookieGoogle(p.email, p.name || '', seguro(req), p.picture), cookieEstado('', req, 0)]), true;
     } catch (e) { console.error('google-login:', e.message); return fallo('fallo'), true; }
   }

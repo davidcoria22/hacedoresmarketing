@@ -39,6 +39,7 @@ async function guardarMensajes(registros) {
     r = await h.petición('POST', url, JSON.stringify({ values: filas }), cab);
   }
   if (r.status !== 200) throw new Error('Google Sheets respondió ' + r.status);
+  cacheFilas = { t: 0, filas: cacheFilas.filas };   // hay mensajes nuevos: la próxima lectura va a la hoja
   if (!cabeceraAutor) {   // la pestaña ya existía sin la columna "autor": se le pone su título una vez
     cabeceraAutor = true;
     h.petición('PUT', 'https://sheets.googleapis.com/v4/spreadsheets/' + h.SHEET_ID + '/values/' + encodeURIComponent(PESTANA + '!M1') + '?valueInputOption=RAW', JSON.stringify({ values: [['autor']] }), cab).catch(() => { cabeceraAutor = false; });
@@ -46,14 +47,28 @@ async function guardarMensajes(registros) {
 }
 let cabeceraAutor = false;
 
+// Con el panel abierto se pregunta cada pocos segundos: la hoja se lee una vez y se comparte unos segundos entre todos (Google limita las lecturas por minuto).
+// Si Google falla un momento se sigue con lo último leído para que el panel no se vea roto.
+let cacheFilas = { t: 0, filas: null };
+async function filasMensajes() {
+  if (cacheFilas.filas && Date.now() - cacheFilas.t < 4000) return cacheFilas.filas;
+  try {
+    const h = ayudas();
+    const token = await h.tokenGoogle('spreadsheets.readonly');
+    const r = await h.petición('GET', 'https://sheets.googleapis.com/v4/spreadsheets/' + h.SHEET_ID + '/values/' + encodeURIComponent(PESTANA + '!A2:M5000'), null, { Authorization: 'Bearer ' + token });
+    if (r.status === 400) { cacheFilas = { t: Date.now(), filas: [] }; return []; }   // todavía no hay pestaña: aún no llega ningún mensaje
+    if (r.status !== 200) throw new Error('Google Sheets respondió ' + r.status);
+    cacheFilas = { t: Date.now(), filas: JSON.parse(r.body).values || [] };
+    return cacheFilas.filas;
+  } catch (e) {
+    if (cacheFilas.filas && Date.now() - cacheFilas.t < 120000) return cacheFilas.filas;
+    throw e;
+  }
+}
+
 // Por defecto solo devuelve lo que escriben los clientes; con todos=true también lo que se les envía (conversación completa).
 async function leerMensajes(limite = 50, red = '', todos = false) {
-  const h = ayudas();
-  const token = await h.tokenGoogle('spreadsheets.readonly');
-  const r = await h.petición('GET', 'https://sheets.googleapis.com/v4/spreadsheets/' + h.SHEET_ID + '/values/' + encodeURIComponent(PESTANA + '!A2:M5000'), null, { Authorization: 'Bearer ' + token });
-  if (r.status === 400) return [];   // todavía no hay pestaña: aún no llega ningún mensaje
-  if (r.status !== 200) throw new Error('Google Sheets respondió ' + r.status);
-  const filas = JSON.parse(r.body).values || [];
+  const filas = await filasMensajes();
   let est = {};
   try { est = await require('./pendientes.js').estados(); } catch { /* sin cola todavía */ }
   return filas.map(f => Object.fromEntries(COLUMNAS.map((c, i) => [c, f[i] || ''])))

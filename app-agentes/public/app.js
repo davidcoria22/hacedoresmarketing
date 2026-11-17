@@ -1,3 +1,16 @@
+// Permisos de quien entró (los manda /api/yo según su rol). null = todo permitido (modo local o con contraseña)
+let permisosYo = null, rolYo = '', miEmail = '';
+const puede = p => !permisosYo || permisosYo.has(p);
+const PERM_VISTA = { inicio: 'ver_inicio', mensajes: 'ver_mensajes', redes: 'ver_redes', agentes: 'ver_agentes', usuarios: 'usuarios' };
+const vistaPermitida = v => puede(PERM_VISTA[v] || 'ver_inicio');
+const primeraVista = () => ['inicio', 'mensajes', 'redes', 'agentes', 'usuarios'].find(vistaPermitida) || 'inicio';
+const puedeAjustarAgente = id => puede('ajustes_agentes') || (id === 'whatsapp' && (puede('anuncios_ver') || puede('anuncios_mensajes')));
+function aplicarPermisos() {   // esconde del menú lo que su rol no puede ver
+  document.querySelectorAll('.menu button[data-vista]').forEach(b => { b.hidden = !vistaPermitida(b.dataset.vista); });
+  if (!vistaPermitida(document.body.dataset.vista || 'inicio')) irA(primeraVista());
+  if (typeof pintarAgentesPanel === 'function' && agentes && agentes.length) pintarAgentesPanel();
+}
+
 // ---- acceso con Google: la página se muestra solo si hay sesión; si no, va a la pantalla de entrada ----
 (function () {
   const nativo = window.fetch.bind(window);
@@ -12,8 +25,10 @@
     if (r.status === 401) { location.replace('/entrar.html'); return; }
     const j = await r.json().catch(() => ({}));
     listo();
+    permisosYo = Array.isArray(j.permisos) ? new Set(j.permisos) : null; rolYo = j.rol || ''; miEmail = j.email || '';
+    aplicarPermisos();
     if (j.google) {
-      const quien = document.getElementById('estado-sistema'); if (quien) quien.textContent = j.email;
+      const quien = document.getElementById('estado-sistema'); if (quien) { quien.textContent = j.rol || j.email; quien.title = j.email; }
       const nombre = (j.nombre || String(j.email || '').split('@')[0] || 'Hacedores').trim();
       const pn = document.getElementById('perfil-nombre'); if (pn) pn.textContent = nombre;
       const pa = document.getElementById('perfil-avatar');
@@ -57,6 +72,7 @@ const COLORES = ['#5E8C61', '#E08A4B', '#5E7FB0', '#C4553D', '#8A6FB0', '#3E8C8C
 
 // ---------- menú: una sección a la vez ----------
 function irA(vista) {
+  if (!vistaPermitida(vista)) vista = primeraVista();
   document.body.dataset.vista = vista;
   document.querySelectorAll('.vista').forEach(v => { v.hidden = v.id !== 'vista-' + vista; });
   document.querySelectorAll('.menu button').forEach(b => b.classList.toggle('activo', b.dataset.vista === vista));
@@ -65,6 +81,7 @@ function irA(vista) {
   if (vista === 'inicio') setTimeout(pintarGraficaInicio, 0);
   if (vista === 'mensajes') cargarMensajes();
   mapaSegunVista(vista);
+  if (vista === 'usuarios') pintarUsuarios();
 }
 document.querySelectorAll('.menu button').forEach(b => b.addEventListener('click', () => irA(b.dataset.vista)));
 // Mapa 2D de la sección Agentes: al entrar, los agentes se meten al mapa; al salir, vuelven a caminar por la página
@@ -251,7 +268,7 @@ function pintarAgentesPanel() {
         <span class="ag-estado ${t ? 'on' : ''}"><i></i>${t ? 'Trabajando' : 'Descansando'}</span>
         <span class="ag-ult">${esc(ultimaTexto(a))}</span>
       </span>
-      ${`<button class="ag-engrane" data-ajustes="${a.id}" title="Ajustes del agente" aria-label="Ajustes de ${esc(a.nombre)}">
+      ${!puedeAjustarAgente(a.id) ? '' : `<button class="ag-engrane" data-ajustes="${a.id}" title="Ajustes del agente" aria-label="Ajustes de ${esc(a.nombre)}">
         <svg viewBox="0 0 24 24" width="17" height="17"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM19.4 13.5a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V19a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H5a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3h0a1.6 1.6 0 0 0 1-1.5V5a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v0a1.6 1.6 0 0 0 1.5 1H19a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg>
       </button>`}
     </div>`;
@@ -268,7 +285,19 @@ function pintarAgentesPanel() {
 // ---------- ajustes del agente (engrane) ----------
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const PALETA = ['#5E8C61', '#E5A92B', '#5E7FB0', '#F7695C', '#8A6FB0', '#26272B'];
+const botonesAnuncios = () => (puede('anuncios_mensajes') ? '<button type="button" class="sec btn-anuncios" data-anuncios>Mensajes por anuncio…</button>' : '') + (puede('anuncios_ver') ? '<button type="button" class="sec btn-anuncios" data-meta-ads>Anuncios en Meta…</button>' : '');
+function abrirAccesosAnuncios() {   // para quien no puede cambiar los ajustes del agente pero sí trabajar con anuncios
+  const m = document.createElement('div'); m.className = 'modal-ajustes';
+  m.innerHTML = '<div class="modal-caja"><h3>Anuncios</h3>' + botonesAnuncios() + '<div class="botones-aj"><span style="flex:1"></span><button type="button" class="sec" data-cerrar>Cerrar</button></div></div>';
+  document.body.appendChild(m);
+  const cerrar = () => m.remove();
+  m.addEventListener('mousedown', e => { if (e.target === m) cerrar(); });
+  m.querySelector('[data-cerrar]').addEventListener('click', cerrar);
+  const b1 = m.querySelector('[data-anuncios]'); if (b1) b1.addEventListener('click', () => { cerrar(); abrirAnuncios(); });
+  const b2 = m.querySelector('[data-meta-ads]'); if (b2) b2.addEventListener('click', () => { cerrar(); abrirMetaAds(); });
+}
 function abrirAjustes(id) {
+  if (!puede('ajustes_agentes')) { abrirAccesosAnuncios(); return; }
   const a = agentes.find(x => x.id === id); if (!a) return;
   const i = agentes.indexOf(a);
   const actual = a.color || COLORES[i % COLORES.length];
@@ -283,7 +312,7 @@ function abrirAjustes(id) {
     </div>
     <label>Notas para el chat <small>(se suman a sus instrucciones cuando hablas con él)</small><textarea name="notas" rows="4" maxlength="1000" placeholder="Ej. Responde siempre con emojis">${esc(a.notas)}</textarea></label>
     ${modoPublico ? '<label>Contraseña del panel <small>(necesaria para guardar en línea)</small><input type="password" name="clave" autocomplete="current-password"></label>' : ''}
-    ${id === 'whatsapp' ? '<button type="button" class="sec btn-anuncios" data-anuncios>Mensajes por anuncio…</button><button type="button" class="sec btn-anuncios" data-meta-ads>Anuncios en Meta…</button>' : ''}
+    ${id === 'whatsapp' ? botonesAnuncios() : ''}
     <span class="error-msg" data-aviso></span>
     <p class="nota-aj">Horario actual: ${esc(a.horario)} (se cambia en la tarea programada).</p>
     <div class="botones-aj"><button type="button" class="sec" data-restablecer>Restablecer</button><span style="flex:1"></span><button type="button" class="sec" data-cancelar>Cancelar</button><button type="submit">Guardar</button></div>
@@ -390,7 +419,8 @@ async function abrirMetaAds() {
   const cerrar = () => m.remove();
   m.addEventListener('mousedown', e => { if (e.target === m) cerrar(); });
   m.querySelector('[data-cerrar]').addEventListener('click', cerrar);
-  m.querySelector('[data-crear-anuncio]').addEventListener('click', () => { cerrar(); abrirCrearAnuncio(); });
+  const bCrear = m.querySelector('[data-crear-anuncio]');
+  if (!puede('anuncios_crear')) bCrear.remove(); else bCrear.addEventListener('click', () => { cerrar(); abrirCrearAnuncio(); });
   const cuerpo = m.querySelector('[data-cuerpo]');
   const aviso = (t, bien) => { const a = m.querySelector('[data-aviso]'); a.textContent = t || ''; a.style.color = bien ? 'var(--bien)' : ''; };
   const peso = x => x ? new Intl.NumberFormat('es-MX', { style: 'currency', currency: x.moneda || 'MXN', maximumFractionDigits: 2 }).format(x.valor) : '—';
@@ -419,6 +449,7 @@ async function abrirMetaAds() {
         }).join('') + '</div>'
         : '<p class="neu">No hay campañas en esta cuenta.</p>') +
       '<p class="nota-aj">Pausar o reactivar siempre pide confirmación. Nunca se borra nada, y un presupuesto nunca pasa del tope.</p>';
+    if (!puede('anuncios_control')) cuerpo.querySelectorAll('[data-estado], [data-presup]').forEach(e => e.remove());
     cuerpo.querySelectorAll('[data-abrir]').forEach(b => b.addEventListener('click', () => { const id = b.dataset.abrir; abiertas.has(id) ? abiertas.delete(id) : abiertas.add(id); pintar(); }));
     cuerpo.querySelectorAll('[data-estado]').forEach(b => b.addEventListener('click', async () => {
       const act = b.dataset.estado === 'ACTIVE';
@@ -528,6 +559,102 @@ async function abrirCrearAnuncio() {
       });
     } catch (err) { b.disabled = false; b.textContent = 'Crear (pausado)'; aviso(err.message); m.querySelector('.error-msg[data-aviso]').scrollIntoView({ block: 'nearest' }); }
   });
+}
+
+// ---------- administración de usuarios y roles (solo quien tiene el permiso "usuarios") ----------
+let adminDatos = null;
+async function pintarUsuarios() {
+  const cont = $('#usuarios-cuerpo'); if (!cont) return;
+  const pedir = async (metodo, ruta, cuerpo) => {
+    const r = await fetch(ruta, { method: metodo, headers: { 'Content-Type': 'application/json', 'x-panel': '1' }, body: cuerpo ? JSON.stringify(cuerpo) : undefined });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'No se pudo completar.');
+    return j;
+  };
+  try {
+    const r = await fetch('/api/usuarios'); const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'No se pudo cargar.');
+    adminDatos = j;
+  } catch (e) { cont.innerHTML = '<div class="tarjeta"><p class="error-msg">' + esc(e.message) + '</p></div>'; return; }
+  const { usuarios, roles } = adminDatos;
+  const opcionesRol = sel => roles.map(r => `<option value="${esc(r.nombre)}" ${r.nombre.toLowerCase() === String(sel).toLowerCase() ? 'selected' : ''}>${esc(r.nombre)}</option>`).join('');
+  const iniciales = u => (u.nombre || u.email).split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase() || '?';
+  const filaUsuario = u => {
+    const yoMismo = u.email === (miEmail || '').toLowerCase();
+    const fijo = u.origen === 'vercel' || yoMismo;
+    return `<div class="usr-fila ${u.activo ? '' : 'inactivo'}" data-email="${esc(u.email)}">
+      <span class="avatar">${esc(iniciales(u))}</span>
+      <span class="usr-datos"><b>${esc(u.nombre || u.email.split('@')[0])}${yoMismo ? ' <i class="mini-etq-c">tú</i>' : ''}</b><small>${esc(u.email)}</small></span>
+      ${fijo ? `<span class="rol-fijo">${esc(u.rol)}${u.origen === 'vercel' ? ' · desde Vercel' : ''}</span>`
+        : `<select class="sel-rol" aria-label="Rol de ${esc(u.email)}">${opcionesRol(u.rol)}</select>
+           <button type="button" class="mini-acc" data-activo="${u.activo ? '0' : '1'}">${u.activo ? 'Desactivar' : 'Activar'}</button>
+           <button type="button" class="mini-acc peligro" data-quitar>Quitar</button>`}
+    </div>`;
+  };
+  const filaRol = r => `<div class="rol-fila"><div class="rol-info"><b>${esc(r.nombre)}</b> <small>${r.enUso ? 'en uso' : 'sin personas'}${r.fijo ? ' · fijo' : r.editado ? ' · ajustado' : r.propio ? ' · tuyo' : ''}</small><p>${esc(r.descripcion || '')}</p></div><button type="button" class="mini-acc" data-rol="${esc(r.nombre)}">${r.fijo ? 'Ver' : 'Editar'}</button></div>`;
+  cont.innerHTML = `<div class="rejilla dos">
+    <section class="tarjeta"><div class="tit"><h3>Personas con acceso</h3><span class="neu">entran con su cuenta de Google</span></div>
+      <div class="usr-lista">${usuarios.map(filaUsuario).join('')}</div>
+      <form class="usr-nuevo" id="form-usuario"><h4>Agregar persona</h4>
+        <div class="dos-col"><label>Correo de Google<input name="email" type="email" required placeholder="nombre@gmail.com"></label><label>Nombre <small>(opcional)</small><input name="nombre" maxlength="60"></label></div>
+        <label>Rol<select name="rol">${opcionesRol('Solo lectura')}</select></label>
+        <div class="botones-aj"><span class="error-msg" data-aviso></span><span style="flex:1"></span><button type="submit">Agregar</button></div>
+      </form></section>
+    <section class="tarjeta"><div class="tit"><h3>Roles</h3><button type="button" class="mini-acc" id="nuevo-rol">+ Nuevo rol</button></div>
+      <p class="nota-aj">Cada rol decide qué ve y qué puede mover la persona. Los cambios valen en unos segundos.</p>
+      <div class="rol-lista">${roles.map(filaRol).join('')}</div></section></div>`;
+  const aviso = t => { const a = cont.querySelector('[data-aviso]'); if (a) a.textContent = t || ''; };
+  const guardarUsuario = async (email, cambios) => {
+    const u = usuarios.find(x => x.email === email);
+    try { await pedir('POST', '/api/usuarios', { email, nombre: u.nombre, rol: u.rol, activo: u.activo, ...cambios }); await pintarUsuarios(); }
+    catch (e) { aviso(e.message); alert(e.message); await pintarUsuarios(); }
+  };
+  cont.querySelectorAll('.usr-fila').forEach(f => {
+    const email = f.dataset.email;
+    const sel = f.querySelector('.sel-rol'); if (sel) sel.addEventListener('change', () => guardarUsuario(email, { rol: sel.value }));
+    const act = f.querySelector('[data-activo]'); if (act) act.addEventListener('click', () => guardarUsuario(email, { activo: act.dataset.activo === '1' }));
+    const q = f.querySelector('[data-quitar]');
+    if (q) q.addEventListener('click', async () => {
+      if (!confirm('Quitar a ' + email + '? Ya no podrá entrar al panel.')) return;
+      try { await pedir('DELETE', '/api/usuarios?email=' + encodeURIComponent(email)); await pintarUsuarios(); } catch (e) { alert(e.message); }
+    });
+  });
+  $('#form-usuario').addEventListener('submit', async e => {
+    e.preventDefault(); aviso('');
+    const d = Object.fromEntries(new FormData(e.target));
+    try { await pedir('POST', '/api/usuarios', d); await pintarUsuarios(); }
+    catch (err) { aviso(err.message); }
+  });
+  const editorRol = rol => {
+    const nuevo = !rol, fijo = !!(rol && rol.fijo);
+    const m = document.createElement('div'); m.className = 'modal-ajustes';
+    const grupos = {}; adminDatos.permisos.filter(p => p.id !== 'usuarios').forEach(p => { (grupos[p.grupo] ||= []).push(p); });
+    m.innerHTML = `<form class="modal-caja"><h3>${nuevo ? 'Nuevo rol' : esc(rol.nombre)}</h3>
+      ${nuevo ? '<label>Nombre del rol<input name="nombre" maxlength="40" required placeholder="Ej. Diseño"></label>' : ''}
+      <label>Descripción <small>(opcional)</small><input name="descripcion" maxlength="120" value="${esc(rol ? rol.descripcion : '')}" ${fijo ? 'disabled' : ''}></label>
+      ${fijo ? '<p class="nota-aj">El rol Administrador tiene todos los permisos y no se puede cambiar.</p>' : ''}
+      ${Object.entries(grupos).map(([g, ps]) => `<div class="campo"><b>${esc(g)}</b>${ps.map(p => `<label class="perm"><input type="checkbox" name="p" value="${p.id}" ${rol && rol.permisos.includes(p.id) ? 'checked' : ''} ${fijo ? 'disabled' : ''}> ${esc(p.texto)}</label>`).join('')}</div>`).join('')}
+      <span class="error-msg" data-aviso></span>
+      <div class="botones-aj">${!nuevo && !fijo ? '<button type="button" class="sec" data-borrar>' + (rol.propio ? 'Eliminar' : 'Restaurar original') + '</button>' : ''}<span style="flex:1"></span><button type="button" class="sec" data-cerrar>${fijo ? 'Cerrar' : 'Cancelar'}</button>${fijo ? '' : '<button type="submit">Guardar</button>'}</div></form>`;
+    document.body.appendChild(m);
+    const cerrar = () => m.remove();
+    m.addEventListener('mousedown', e => { if (e.target === m) cerrar(); });
+    m.querySelector('[data-cerrar]').addEventListener('click', cerrar);
+    const av = t => { m.querySelector('[data-aviso]').textContent = t; };
+    m.querySelector('form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const f = new FormData(e.target);
+      try { await pedir('POST', '/api/roles', { nuevo, nombre: nuevo ? f.get('nombre') : rol.nombre, descripcion: f.get('descripcion'), permisos: f.getAll('p') }); cerrar(); await pintarUsuarios(); }
+      catch (err) { av(err.message); }
+    });
+    const b = m.querySelector('[data-borrar]');
+    if (b) b.addEventListener('click', async () => {
+      if (!confirm(rol.propio ? 'Eliminar el rol ' + rol.nombre + '?' : 'Volver al rol original?')) return;
+      try { await pedir('DELETE', '/api/roles?nombre=' + encodeURIComponent(rol.nombre)); cerrar(); await pintarUsuarios(); } catch (err) { av(err.message); }
+    });
+  };
+  cont.querySelectorAll('[data-rol]').forEach(b => b.addEventListener('click', () => editorRol(roles.find(r => r.nombre === b.dataset.rol))));
+  $('#nuevo-rol').addEventListener('click', () => editorRol(null));
 }
 
 // ---------- último post por red (arriba de la gráfica) ----------
@@ -842,6 +969,7 @@ function etiquetaRed(lista) {
 }
 function pintarColumnas() {
   const cont = $('#cols-msg');
+  const scrolls = [...cont.querySelectorAll('.lista-col')].map(e => e.scrollTop);   // para no perder dónde ibas al refrescar
   cont.innerHTML = Object.entries(RED_MSG).map(([id, r]) => {
     const todas = conversaciones.filter(c => c.red === id);
     let lista = todas, filtros = '';
@@ -854,6 +982,7 @@ function pintarColumnas() {
     return `<section class="col-red"><div class="cab"><svg viewBox="0 0 24 24" aria-hidden="true">${r.icono}</svg>${r.nombre}${etiquetaRed(todas)}</div>${filtros}
       <div class="lista-col">${lista.length ? lista.map(filaColumna).join('') : '<div class="sin">' + (todas.length ? 'Ninguna conversación con este filtro.' : 'Todavía no hay conversaciones.') + '</div>'}</div></section>`;
   }).join('');
+  cont.querySelectorAll('.lista-col').forEach((e, i) => { if (scrolls[i]) e.scrollTop = scrolls[i]; });
   cont.querySelectorAll('[data-conv]').forEach(b => b.addEventListener('click', () => abrirConversacion(b.dataset.conv)));
   cont.querySelectorAll('.filtro-wa').forEach(b => b.addEventListener('click', () => {
     filtroWa = b.dataset.filtro;
@@ -867,6 +996,9 @@ function pintarConversacion(desplazar) {
   if (!c) { modal.hidden = true; return; }
   modal.hidden = false;
   const r = RED_MSG[c.red];
+  const hiloPrev = cont.querySelector('.hilo'), mismaConv = cont.dataset.clave === c.clave;   // al refrescar solo, no te mueve si estabas leyendo arriba
+  const alFinal = !hiloPrev || !mismaConv || hiloPrev.scrollHeight - hiloPrev.scrollTop - hiloPrev.clientHeight < 70, topPrev = hiloPrev ? hiloPrev.scrollTop : 0;
+  cont.dataset.clave = c.clave;
   const previo = cont.querySelector('.resp-texto');   // si ya estabas escribiendo, no se pierde al refrescar
   const borrador = previo ? previo.value : '', teniaFoco = !!previo && document.activeElement === previo;
   const burbujas = c.mensajes.map(m => {
@@ -893,13 +1025,14 @@ function pintarConversacion(desplazar) {
     try { const r = await fetch(url); if (!r.ok) { const j = await r.json().catch(() => ({})); motivo = j.error || ('Error ' + r.status); } } catch { motivo = 'Sin conexión con el servidor.'; }   // se pide de nuevo para decir el motivo real
     nota.textContent = 'No se puede mostrar este archivo. ' + (motivo || 'El navegador no pudo leerlo.');
   }, { once: true }));
-  const hilo = cont.querySelector('.hilo'); hilo.scrollTop = hilo.scrollHeight;
+  const hilo = cont.querySelector('.hilo'); hilo.scrollTop = alFinal ? hilo.scrollHeight : topPrev;
   activarRespuesta(c, borrador, teniaFoco);
 }
 
 // ---------- contestar desde el panel (solo WhatsApp, dentro de las 24 h del último mensaje del cliente) ----------
 function cajaRespuesta(c) {
   if (c.red !== 'whatsapp') return '<p class="resp-nota">Por ahora solo se puede contestar desde aquí en WhatsApp.</p>';
+  if (!puede('responder')) return '<p class="resp-nota">Tu rol puede ver esta conversación, pero no responder.</p>';
   if (!c.ref) return '<p class="resp-nota">Esta conversación es anterior a esta función y no tengo su número completo. Contesta desde la app de WhatsApp.</p>';
   const ultimo = [...c.mensajes].reverse().find(m => m.direccion !== 'salida');
   if (!ultimo || Date.now() - new Date(ultimo.fecha) > 24 * 3600000) return '<p class="resp-nota">Pasaron más de 24 horas desde su último mensaje. WhatsApp solo permite plantillas aprobadas, así que no se puede contestar con texto libre.</p>';
@@ -964,6 +1097,7 @@ function animarConversacion(entrando) {
 function abrirConversacion(clave) {
   const nueva = $('#modal-conv').hidden;
   convActiva = clave;
+  if (nueva) $('#conv').dataset.clave = '';   // al abrirla de nuevo empieza en el último mensaje
   pintarConversacion();
   if (nueva) animarConversacion(true);
 }
@@ -1042,28 +1176,52 @@ function formularioClave(texto) {
     } catch { $('#error-clave').textContent = 'Sin conexión con el servidor'; }
   });
 }
-async function cargarMensajes() {
+// Los mensajes se actualizan solos: cada pocos segundos se pregunta si hay algo nuevo y solo se redibuja si cambió algo
+let firmaMensajes = '', cargandoMensajes = false, fallosMensajes = 0, mensajesBloqueado = false, temporizadorMensajes = null, ciclosOtras = 0;
+const firmaDe = j => { const l = j.mensajes || []; return l.length + '|' + l.slice(0, 40).map(m => m.fecha + m.respuesta + (m.autor || '') + (m.direccion || '')).join(',') + '|' + (j.resumen ? j.resumen.pendientes + '|' + j.resumen.proximo : ''); };
+function estadoEnVivo(ok) { const b = $('#actualizar-msg'); if (!b) return; b.classList.toggle('sin-red', !ok); const s = b.querySelector('span'); if (s) s.textContent = ok ? 'En vivo' : 'Reconectando…'; }
+async function cargarMensajes(forzar) {
+  if (cargandoMensajes) return;
+  cargandoMensajes = true;
   try {
     const r = await fetch('/api/mensajes?todos=1');
-    const j = await r.json();
+    const j = await r.json().catch(() => ({}));
     $('#salir-msg').hidden = !(r.ok && modoPublico);
     if (r.status === 401) {
       formularioClave(j.configurada === false ? 'La contraseña del panel todavía no está configurada.' : 'Escribe la contraseña para ver los mensajes.');
       $('#inicio-msg').innerHTML = '<div class="vacio-msg">Entra a Mensajes con tu contraseña para verlos aquí.</div>';
       return;
     }
-    if (!r.ok) { $('#cols-msg').innerHTML = `<div class="vacio-msg">${esc(j.error || 'No se pudieron cargar')}</div>`; return; }
+    if (r.status === 403) { mensajesBloqueado = true; $('#cols-msg').innerHTML = '<div class="vacio-msg">Tu rol no puede ver los mensajes.</div>'; return; }
+    if (!r.ok) { fallosMensajes++; estadoEnVivo(false); if (!firmaMensajes) $('#cols-msg').innerHTML = `<div class="vacio-msg">${esc(j.error || 'No se pudieron cargar')}</div>`; return; }
+    fallosMensajes = 0; estadoEnVivo(true);
+    const firma = firmaDe(j);
+    if (!forzar && firma === firmaMensajes) return;   // nada nuevo: no se redibuja (así no se pierde lo que estás haciendo)
+    firmaMensajes = firma;
     conversaciones = armarConversaciones(j.mensajes || []);
     resumenCola = j.resumen || resumenCola;
     finProximo = resumenCola.proximo ? Date.parse(resumenCola.proximo) : 0;
     pintarColumnas(); pintarConversacion(); pintarInicioMensajes(); pintarPorcentajes(); pintarGrandes(); pintarReloj();
-  } catch { $('#cols-msg').innerHTML = '<div class="vacio-msg">Sin conexión con el servidor.</div>'; }
+  } catch { fallosMensajes++; estadoEnVivo(false); if (!firmaMensajes) $('#cols-msg').innerHTML = '<div class="vacio-msg">Sin conexión con el servidor.</div>'; }
+  finally { cargandoMensajes = false; }
 }
-$('#salir-msg').addEventListener('click', async () => { await fetch('/api/logout', { method: 'POST' }); cargarMensajes(); });
-$('#actualizar-msg').addEventListener('click', cargarMensajes);
+function programarMensajes() {
+  clearTimeout(temporizadorMensajes);
+  const espera = fallosMensajes ? Math.min(60000, 6000 * 2 ** fallosMensajes) : 6000;   // si falla, espera más cada vez
+  temporizadorMensajes = setTimeout(async () => {
+    const vista = document.body.dataset.vista, enMensajes = vista === 'inicio' || vista === 'mensajes';
+    const util = !document.hidden && !mensajesBloqueado && !document.querySelector('#clave-msg');
+    if (util && (enMensajes || ++ciclosOtras % 5 === 0)) await cargarMensajes();   // en otras secciones solo para encender el aviso de mensajes nuevos
+    programarMensajes();
+  }, espera);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !mensajesBloqueado) cargarMensajes(); });
+window.addEventListener('focus', () => { if (!mensajesBloqueado) cargarMensajes(); });
+$('#salir-msg').addEventListener('click', async () => { await fetch('/api/logout', { method: 'POST' }); cargarMensajes(true); });
+$('#actualizar-msg').addEventListener('click', () => cargarMensajes(true));
 $('#fecha-hoy').textContent = new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }).replace(/^./, c => c.toUpperCase());
 cargarMensajes();
-setInterval(() => { if (!document.hidden && !document.querySelector('#clave-msg')) cargarMensajes(); }, 30000);
+programarMensajes();
 try { const v = localStorage.getItem('vista'); if (v && document.getElementById('vista-' + v)) irA(v); } catch { /* sin almacenamiento */ }
 
 cargar();

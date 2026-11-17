@@ -356,6 +356,19 @@ const manejar = async (req, res) => {
     }
     const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
     const https_ = (req.headers['x-forwarded-proto'] || '') === 'https';
+    // Permisos: con Google activo cada cuenta tiene un rol (ver usuarios.js); en local o con contraseña se puede todo
+    const U = require('./usuarios.js');
+    const conRoles = MODO_PUBLICO && auth.googleActivo();
+    const usr = conRoles ? auth.usuarioGoogle(req) : null;
+    let permisosDe = new Set(U.IDS);
+    if (conRoles && url.pathname.startsWith('/api/') && url.pathname !== '/api/logout') {
+      let acc = null;
+      try { acc = usr ? await U.acceso(usr.email) : null; } catch (e) { return enviarJSON(res, 503, { error: 'No pude comprobar tus permisos: ' + e.message }); }
+      if (!acc) { res.setHeader('Set-Cookie', auth.cookieGoogleBorrar(https_)); res.setHeader('X-Login', '/entrar.html'); return enviarJSON(res, 401, { requiereLogin: true, login: '/entrar.html', error: 'Tu cuenta ya no tiene acceso.' }); }
+      permisosDe = acc.permisos;
+    }
+    const puede = (...ps) => ps.some(p => permisosDe.has(p));
+    const niega = () => enviarJSON(res, 403, { error: 'Tu rol no tiene permiso para esto.' });
     if (req.method === 'POST' && url.pathname === '/api/login') {
       if (!MODO_PUBLICO) return enviarJSON(res, 200, { ok: true, local: true });
       if (auth.googleActivo()) return enviarJSON(res, 403, { error: 'El acceso es con cuenta de Google.' });
@@ -370,7 +383,22 @@ const manejar = async (req, res) => {
       res.setHeader('Set-Cookie', [auth.cookieBorrar(https_), auth.cookieGoogleBorrar(https_)]);
       return enviarJSON(res, 200, { ok: true });
     }
+    if (url.pathname === '/api/usuarios' || url.pathname === '/api/roles') {   // administración de usuarios y roles
+      if (!puede('usuarios')) return niega();
+      const quien = usr ? usr.email : '';
+      try {
+        if (req.method === 'GET') return enviarJSON(res, 200, await U.listar());
+        if (req.headers['x-panel'] !== '1') return enviarJSON(res, 403, { error: 'Solicitud no válida.' });
+        const deUsuarios = url.pathname === '/api/usuarios';
+        let r = null;
+        if (req.method === 'POST') r = deUsuarios ? await U.guardarUsuario(await leerCuerpo(req), quien) : await U.guardarRol(await leerCuerpo(req));
+        else if (req.method === 'DELETE') r = deUsuarios ? await U.quitarUsuario(url.searchParams.get('email'), quien) : await U.quitarRol(url.searchParams.get('nombre'));
+        if (!r) return enviarJSON(res, 405, { error: 'Método no permitido' });
+        return enviarJSON(res, r.ok ? 200 : 400, r.ok ? { ok: true, nota: r.nota } : { error: r.error });
+      } catch (e) { return enviarJSON(res, 502, { error: 'No se pudo completar: ' + e.message }); }
+    }
     if (req.method === 'GET' && url.pathname === '/api/mensajes') {
+      if (!puede('ver_mensajes', 'ver_inicio')) return niega();
       if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, configurada: auth.configurada() });
       const red = url.searchParams.get('red') || '';
       const todos = url.searchParams.get('todos') === '1';   // con todos=1 incluye lo que se envió, para armar las conversaciones
@@ -383,11 +411,13 @@ const manejar = async (req, res) => {
       catch (e) { return enviarJSON(res, 502, { error: 'No se pudieron leer los mensajes: ' + e.message }); }
     }
     if (req.method === 'GET' && url.pathname === '/api/whatsapp-media') {   // fotos, documentos, audios y videos de WhatsApp
+      if (!puede('ver_mensajes')) return niega();
       if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra con tu cuenta.' });
       try { return await require('./whatsapp.js').servirMedia(url.searchParams.get('id'), url.searchParams.get('n'), res); }
       catch (e) { return enviarJSON(res, 502, { error: 'No se pudo cargar el archivo: ' + e.message }); }
     }
     if (req.method === 'POST' && url.pathname === '/api/responder') {   // contestar un WhatsApp desde el panel
+      if (!puede('responder')) return niega();
       if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra con la contraseña del panel.' });
       if (req.headers['x-panel'] !== '1') return enviarJSON(res, 403, { error: 'Solicitud no válida.' });   // cabecera propia: otras páginas web no pueden mandarla (el navegador las bloquea)
       const { ref, texto } = await leerCuerpo(req);
@@ -399,11 +429,13 @@ const manejar = async (req, res) => {
       } catch (e) { return enviarJSON(res, 502, { error: 'No se pudo enviar: ' + e.message }); }
     }
     if (req.method === 'GET' && url.pathname === '/api/meta-ads') {   // cómo van los anuncios de Facebook e Instagram (solo lectura)
+      if (!puede('anuncios_ver')) return niega();
       if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra para ver los anuncios.' });
       try { return enviarJSON(res, 200, await require('./meta-ads.js').resumen()); }
       catch (e) { return enviarJSON(res, 502, { error: e.message }); }
     }
     if (req.method === 'POST' && (url.pathname === '/api/meta-ads/estado' || url.pathname === '/api/meta-ads/presupuesto')) {   // pausar/reactivar o cambiar presupuesto
+      if (!puede('anuncios_control')) return niega();
       if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra para cambiar los anuncios.' });
       if (req.headers['x-panel'] !== '1') return enviarJSON(res, 403, { error: 'Solicitud no válida.' });
       const { id, estado, monto } = await leerCuerpo(req);
@@ -414,6 +446,7 @@ const manejar = async (req, res) => {
       } catch (e) { return enviarJSON(res, 400, { error: e.message }); }
     }
     if (url.pathname.startsWith('/api/meta-ads/') && ['/api/meta-ads/videos', '/api/meta-ads/intereses', '/api/meta-ads/crear', '/api/meta-ads/publicar'].includes(url.pathname)) {   // crear anuncios nuevos (siempre pausados)
+      if (!puede('anuncios_crear')) return niega();
       if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra para crear anuncios.' });
       const C = require('./meta-ads-crear.js');
       try {
@@ -428,11 +461,13 @@ const manejar = async (req, res) => {
       } catch (e) { return enviarJSON(res, 400, { error: e.message }); }
     }
     if (url.pathname === '/api/anuncios') {   // mensajes automáticos por anuncio (se editan desde el panel)
+      if (!puede('anuncios_mensajes', 'anuncios_ver')) return niega();
       if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra para ver los anuncios.' });
       const An = require('./anuncios.js');
       try {
         if (req.method === 'GET') return enviarJSON(res, 200, { anuncios: await An.listar() });
         if (req.method === 'POST' || req.method === 'DELETE') {
+          if (!puede('anuncios_mensajes')) return niega();
           if (req.headers['x-panel'] !== '1') return enviarJSON(res, 403, { error: 'Solicitud no válida.' });
           const r = req.method === 'DELETE' ? await An.quitar(url.searchParams.get('id')) : await An.guardar(await leerCuerpo(req));
           return enviarJSON(res, r.ok ? 200 : 400, r.ok ? { ok: true, id: r.id } : { error: r.error });
@@ -442,11 +477,13 @@ const manejar = async (req, res) => {
     }
     const usaIA = !MODO_PUBLICO && !!process.env.ANTHROPIC_API_KEY;   // en línea nunca se gasta la clave de IA
     if (req.method === 'GET' && url.pathname === '/api/ventas') {   // ventas de WooCommerce (hoy, mes y las últimas)
+      if (!puede('ver_agentes', 'ver_inicio')) return niega();
       if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra con tu cuenta.' });
       try { return enviarJSON(res, 200, await require('./woocommerce.js').resumen()); }
       catch (e) { return enviarJSON(res, require('./woocommerce.js').configurado() ? 502 : 503, { configurado: require('./woocommerce.js').configurado(), error: e.message }); }
     }
     if (req.method === 'GET' && url.pathname === '/api/agentes') {
+      if (!puede('ver_inicio', 'ver_mensajes', 'ver_redes', 'ver_agentes')) return niega();
       await refrescarAjustesNube();
       const act = await actividadHoy(), hoy = fechaMexico(new Date());
       const agentes = listarAgentes().map(({ instrucciones, ...resto }) => {
@@ -461,6 +498,7 @@ const manejar = async (req, res) => {
       return enviarJSON(res, 200, { agentes, chatActivo: usaIA, modoPublico: MODO_PUBLICO });
     }
     if (req.method === 'POST' && url.pathname === '/api/ajustes') {
+      if (!puede('ajustes_agentes')) return niega();
       if (MODO_PUBLICO && !require('./auth.js').sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Escribe la contraseña del panel para guardar.' });
       await refrescarAjustesNube(true);
       const { agente: id, ...cfg } = await leerCuerpo(req);
@@ -469,6 +507,7 @@ const manejar = async (req, res) => {
       return enviarJSON(res, 200, { ok: true });
     }
     if (req.method === 'GET' && url.pathname === '/api/publicaciones') {
+      if (!puede('ver_redes', 'ver_inicio')) return niega();
       const red = url.searchParams.get('red');
       if (!['instagram', 'facebook', 'tiktok', 'twitter'].includes(red)) return enviarJSON(res, 400, { error: 'Red desconocida' });
       const c = cachePosts[red];
@@ -478,16 +517,19 @@ const manejar = async (req, res) => {
       return enviarJSON(res, 200, v);
     }
     if (req.method === 'GET' && url.pathname === '/api/seguidores') {
+      if (!puede('ver_redes', 'ver_inicio')) return niega();
       const { datos } = await leerHoja();
       const limite = Math.min(2000, Math.max(1, Number(url.searchParams.get('limite')) || 60));   // por defecto 60 filas; la gráfica del inicio pide más para ver meses y años
       const ultimos = datos.slice(-limite);
       return enviarJSON(res, 200, { ultimos, total: datos.length });
     }
     if (req.method === 'GET' && url.pathname === '/api/registro') {
+      if (!puede('ver_agentes')) return niega();
       const registro = leerCSV(path.join(AGENTES, 'seguidores-diarios', 'registro.csv')).slice(-15).reverse();
       return enviarJSON(res, 200, { registro });
     }
     if (req.method === 'POST' && url.pathname === '/api/chat') {
+      if (!puede('ver_agentes')) return niega();
       const { agente: id, mensajes = [] } = await leerCuerpo(req);
       const agente = listarAgentes().find(a => a.id === id);
       if (!agente) return enviarJSON(res, 404, { error: 'Agente no encontrado' });
@@ -502,10 +544,12 @@ const manejar = async (req, res) => {
       return enviarJSON(res, 200, { respuesta: texto });
     }
     if (req.method === 'POST' && url.pathname === '/api/accion') {
+      if (!puede('ver_agentes', 'ajustes_agentes')) return niega();
       const { agente: id, accion } = await leerCuerpo(req);
       if (id !== 'seguidores-diarios') return enviarJSON(res, 404, { error: 'Esta acción no está disponible para este agente' });
       const acciones = { resumen: resumenDiario, 'actualizar-hoy': actualizarHoy, semana: ultimos7Dias };
       if (!acciones[accion]) return enviarJSON(res, 400, { error: 'Acción desconocida' });
+      if (accion === 'actualizar-hoy' && !puede('ajustes_agentes')) return niega();
       if (MODO_PUBLICO && accion === 'actualizar-hoy') return enviarJSON(res, 403, { error: 'Escribir en la hoja solo está disponible en la versión local.' });
       return enviarJSON(res, 200, { respuesta: await acciones[accion]() });
     }
