@@ -769,6 +769,12 @@ let resumenCola = { pendientes: 0, proximo: '' };
 let finProximo = 0;
 const hora = f => { const t = new Date(f); return isNaN(t) ? '' : t.toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); };
 
+// Nombre con el que firma el agente de WhatsApp (el que contesta solo): "Agente Charon"
+function nombreAgenteWhatsApp() {
+  const ag = agentes.find(x => x.id === 'whatsapp'), n = String((ag && ag.nombre) || '').trim();
+  return n ? (/^agente\b/i.test(n) ? n : 'Agente ' + n) : 'Agente automático';
+}
+
 // Agrupa los mensajes (de todos los sentidos) por persona y red
 function armarConversaciones(lista) {
   const mapa = new Map();
@@ -866,7 +872,7 @@ function pintarConversacion(desplazar) {
   const burbujas = c.mensajes.map(m => {
     const salida = m.direccion === 'salida';
     const cls = !salida ? 'cli' : m.origen === 'manual' ? 'yo' : 'ag';
-    const quien = !salida ? c.titulo : m.origen === 'manual' ? 'Tú' : 'Agente automático';
+    const quien = !salida ? c.titulo : m.origen === 'manual' ? (m.autor || 'Equipo Hacedores') : nombreAgenteWhatsApp();
     const texto = m.texto || sinTexto(m);
     return `<div class="burbuja-c ${cls}">${m.adjunto ? htmlAdjunto(m.adjunto) : ''}${texto ? '<div class="txt-c">' + esc(texto) + '</div>' : ''}<small>${esc(quien)} · ${esc(hora(m.fecha))}</small></div>`;
   }).join('');
@@ -876,7 +882,7 @@ function pintarConversacion(desplazar) {
     <span class="est ${est[1]}">${est[0]}</span><button class="cerrar-conv" type="button" aria-label="Cerrar conversación">×</button></div>
     <div class="hilo">${burbujas}</div>
     ${cajaRespuesta(c)}
-    <div class="leyenda"><span class="l1">Cliente</span><span class="l2">Agente automático</span><span class="l3">Tú</span></div>`;
+    <div class="leyenda"><span class="l1">Cliente</span><span class="l2">Agente automático</span><span class="l3">Equipo</span></div>`;
   cont.querySelector('.cerrar-conv').addEventListener('click', cerrarConversacion);
   // si WhatsApp ya no tiene el archivo (los guarda unos 30 días) o pesa demasiado, se avisa en lugar de dejar un hueco roto
   cont.querySelectorAll('.adj-img img, audio.adj, video.adj').forEach(el => el.addEventListener('error', async () => {
@@ -898,39 +904,41 @@ function cajaRespuesta(c) {
   const ultimo = [...c.mensajes].reverse().find(m => m.direccion !== 'salida');
   if (!ultimo || Date.now() - new Date(ultimo.fecha) > 24 * 3600000) return '<p class="resp-nota">Pasaron más de 24 horas desde su último mensaje. WhatsApp solo permite plantillas aprobadas, así que no se puede contestar con texto libre.</p>';
   return `<div class="resp">
-    <textarea class="resp-texto" rows="2" maxlength="1000" placeholder="Escribe tu respuesta…"></textarea>
-    <div class="resp-conf" hidden><span>Se enviará por WhatsApp a <b>${esc(c.titulo)}</b>.</span><button type="button" class="resp-ok">Confirmar y enviar</button><button type="button" class="resp-no">Cancelar</button></div>
-    <div class="resp-pie"><span class="resp-error" role="alert"></span><button type="button" class="resp-enviar">Enviar</button></div>
+    <div class="resp-caja">
+      <textarea class="resp-texto" rows="1" maxlength="1000" placeholder="Escribe tu respuesta…" aria-label="Escribe tu respuesta"></textarea>
+      <button type="button" class="resp-enviar" aria-label="Enviar" title="Enviar (Enter)"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 19V6M6 11.5 12 5.5l6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    </div>
+    <div class="resp-pie"><span class="resp-error" role="alert"></span><small class="resp-ayuda">Enter envía · Mayús + Enter hace un salto de línea</small></div>
   </div>`;
 }
+let enfocarRespuesta = false;   // después de enviar, el cursor vuelve a la caja para seguir escribiendo
 function activarRespuesta(c, borrador, teniaFoco) {
   const cont = $('#conv');
   const caja = cont.querySelector('.resp');
   if (!caja) return;
-  const texto = caja.querySelector('.resp-texto'), conf = caja.querySelector('.resp-conf'), enviar = caja.querySelector('.resp-enviar'), error = caja.querySelector('.resp-error');
+  const texto = caja.querySelector('.resp-texto'), enviar = caja.querySelector('.resp-enviar'), error = caja.querySelector('.resp-error');
   texto.value = borrador;
-  if (teniaFoco) texto.focus();
-  const ocupado = si => { caja.querySelectorAll('button, textarea').forEach(e => { e.disabled = si; }); };
-  enviar.addEventListener('click', () => {
+  const ajustarAlto = () => { texto.style.height = 'auto'; texto.style.height = Math.min(texto.scrollHeight, 120) + 'px'; };
+  ajustarAlto();
+  if (teniaFoco || enfocarRespuesta) { texto.focus(); enfocarRespuesta = false; }
+  let enviando = false;
+  const ocupado = si => { enviando = si; texto.readOnly = si; enviar.disabled = si; caja.classList.toggle('enviando', si); };
+  async function mandar() {
+    if (enviando) return;
     error.textContent = '';
     if (!texto.value.trim()) { error.textContent = 'Escribe un mensaje primero.'; return; }
-    conf.hidden = false; enviar.hidden = true;   // segundo paso: confirmar, para no mandar nada por accidente
-  });
-  caja.querySelector('.resp-no').addEventListener('click', () => { conf.hidden = true; enviar.hidden = false; });
-  caja.querySelector('.resp-ok').addEventListener('click', async () => {
-    ocupado(true); error.textContent = 'Enviando…';
+    ocupado(true);
     try {
       const r = await fetch('/api/responder', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-panel': '1' }, body: JSON.stringify({ ref: c.ref, texto: texto.value }) });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        ocupado(false); conf.hidden = true; enviar.hidden = false;
-        error.textContent = r.status === 401 ? 'Tu sesión venció. Entra de nuevo en Mensajes con la contraseña.' : (j.error || 'No se pudo enviar.');
-        return;
-      }
-      texto.value = '';
+      if (!r.ok) { ocupado(false); error.textContent = r.status === 401 ? 'Tu sesión venció. Entra de nuevo.' : (j.error || 'No se pudo enviar.'); return; }
+      texto.value = ''; enfocarRespuesta = true;
       await cargarMensajes();   // vuelve a dibujar la conversación con tu mensaje ya incluido
-    } catch { ocupado(false); conf.hidden = true; enviar.hidden = false; error.textContent = 'Sin conexión con el servidor.'; }
-  });
+    } catch { ocupado(false); error.textContent = 'Sin conexión con el servidor.'; }
+  }
+  enviar.addEventListener('click', mandar);
+  texto.addEventListener('input', ajustarAlto);
+  texto.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); mandar(); } });
 }
 // Animación tipo iOS: la ventana crece desde el contacto que tocaste y, al cerrar, regresa a él (FLIP con curva de resorte suave)
 const CURVA_IOS = 'cubic-bezier(.32, .72, 0, 1)';

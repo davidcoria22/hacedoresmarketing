@@ -466,3 +466,12 @@ label.chico { font-size: 12px; color: var(--suave); }
 .mapa-2d svg { display: block; width: 100%; height: auto; max-height: 560px; }
 .masc.en-mapa .nombre-masc { display: none; }
 .masc.en-mapa { cursor: pointer; }
+
+/* caja de respuesta: el botón de enviar va dentro de la cápsula */
+.resp-caja { display: flex; align-items: flex-end; gap: 8px; background: #3a3a38; border-radius: 24px; padding: 6px 6px 6px 16px; }
+.resp-caja:focus-within { outline: 2px solid var(--rosa); }
+.resp-caja .resp-texto { flex: 1; min-width: 0; background: transparent; border-radius: 0; padding: 8px 0; max-height: 120px; line-height: 1.4; outline: none !important; overflow-y: auto; }
+.resp .resp-caja .resp-enviar { flex: none; width: 36px; height: 36px; padding: 0; display: grid; place-items: center; border-radius: 50%; background: var(--rosa); color: #fff; }
+.resp-caja.enviando { opacity: .7; }
+.resp-ayuda { color: #8d8b83; font-size: 11px; }
+.resp-pie { flex-wrap: nowrap; }

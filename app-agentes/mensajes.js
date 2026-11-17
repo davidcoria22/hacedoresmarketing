@@ -1,6 +1,6 @@
 // Registro de mensajes recibidos de Meta en una pestaña "Mensajes" de la hoja de Google.
 // Solo se guarda el teléfono enmascarado (los últimos 4 dígitos) y un texto recortado.
-const COLUMNAS = ['fecha', 'red', 'nombre', 'telefono', 'tipo', 'texto', 'origen', 'respuesta', 'id', 'direccion', 'contacto', 'media'];   // direccion: 'entrada' (vacío = entrada) o 'salida' (lo que manda el agente o tú); contacto: número completo de WhatsApp (solo para poder responder desde el panel; nunca sale del servidor); media: JSON con el archivo adjunto de WhatsApp ({t:tipo, id, m:mime, n:nombre})
+const COLUMNAS = ['fecha', 'red', 'nombre', 'telefono', 'tipo', 'texto', 'origen', 'respuesta', 'id', 'direccion', 'contacto', 'media', 'autor'];   // direccion: 'entrada' (vacío = entrada) o 'salida' (lo que manda el agente o tú); contacto: número completo de WhatsApp (solo para poder responder desde el panel; nunca sale del servidor); media: JSON con el archivo adjunto de WhatsApp ({t:tipo, id, m:mime, n:nombre}); autor: nombre de quien escribió el mensaje desde el panel (cuenta de Google)
 const crypto = require('crypto');
 const refDe = n => (n ? crypto.createHash('sha256').update('hacedores:' + n).digest('hex').slice(0, 12) : '');   // identificador corto de la conversación que sí viaja al panel
 const PESTANA = 'Mensajes';
@@ -14,7 +14,7 @@ async function prepararPestana(h, token) {
   const cab = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' };
   const r = await h.petición('POST', base + ':batchUpdate', JSON.stringify({ requests: [{ addSheet: { properties: { title: PESTANA } } }] }), cab);
   if (r.status !== 200 && !/already exists/i.test(r.body)) throw new Error('No se pudo crear la pestaña (' + r.status + ')');
-  await h.petición('PUT', base + '/values/' + encodeURIComponent(PESTANA + '!A1:L1') + '?valueInputOption=RAW', JSON.stringify({ values: [COLUMNAS] }), cab);
+  await h.petición('PUT', base + '/values/' + encodeURIComponent(PESTANA + '!A1:M1') + '?valueInputOption=RAW', JSON.stringify({ values: [COLUMNAS] }), cab);
 }
 
 async function guardarMensajes(registros) {
@@ -30,8 +30,8 @@ async function guardarMensajes(registros) {
     }
   } catch { /* si no se puede revisar, se anota igual */ }
   if (!registros.length) return;
-  const filas = registros.map(r => [fecha, r.red, limpiar(r.nombre, 60), r.red === 'whatsapp' ? enmascarar(r.numero) : (r.numero ? 'ID ••' + String(r.numero).slice(-4) : ''), r.tipo, limpiar(r.texto, r.direccion === 'salida' ? 1000 : 300, r.direccion === 'salida'), r.origen, r.respuesta, r.id || '', r.direccion || 'entrada', r.red === 'whatsapp' ? String(r.numero || '').replace(/\D/g, '') : '', r.media || '']);
-  const url = 'https://sheets.googleapis.com/v4/spreadsheets/' + h.SHEET_ID + '/values/' + encodeURIComponent(PESTANA + '!A:L') + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS';
+  const filas = registros.map(r => [fecha, r.red, limpiar(r.nombre, 60), r.red === 'whatsapp' ? enmascarar(r.numero) : (r.numero ? 'ID ••' + String(r.numero).slice(-4) : ''), r.tipo, limpiar(r.texto, r.direccion === 'salida' ? 1000 : 300, r.direccion === 'salida'), r.origen, r.respuesta, r.id || '', r.direccion || 'entrada', r.red === 'whatsapp' ? String(r.numero || '').replace(/\D/g, '') : '', r.media || '', limpiar(r.autor, 60)]);
+  const url = 'https://sheets.googleapis.com/v4/spreadsheets/' + h.SHEET_ID + '/values/' + encodeURIComponent(PESTANA + '!A:M') + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS';
   const cab = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' };
   let r = await h.petición('POST', url, JSON.stringify({ values: filas }), cab);
   if (r.status === 400) {   // la pestaña todavía no existe: se crea y se reintenta
@@ -39,13 +39,18 @@ async function guardarMensajes(registros) {
     r = await h.petición('POST', url, JSON.stringify({ values: filas }), cab);
   }
   if (r.status !== 200) throw new Error('Google Sheets respondió ' + r.status);
+  if (!cabeceraAutor) {   // la pestaña ya existía sin la columna "autor": se le pone su título una vez
+    cabeceraAutor = true;
+    h.petición('PUT', 'https://sheets.googleapis.com/v4/spreadsheets/' + h.SHEET_ID + '/values/' + encodeURIComponent(PESTANA + '!M1') + '?valueInputOption=RAW', JSON.stringify({ values: [['autor']] }), cab).catch(() => { cabeceraAutor = false; });
+  }
 }
+let cabeceraAutor = false;
 
 // Por defecto solo devuelve lo que escriben los clientes; con todos=true también lo que se les envía (conversación completa).
 async function leerMensajes(limite = 50, red = '', todos = false) {
   const h = ayudas();
   const token = await h.tokenGoogle('spreadsheets.readonly');
-  const r = await h.petición('GET', 'https://sheets.googleapis.com/v4/spreadsheets/' + h.SHEET_ID + '/values/' + encodeURIComponent(PESTANA + '!A2:L5000'), null, { Authorization: 'Bearer ' + token });
+  const r = await h.petición('GET', 'https://sheets.googleapis.com/v4/spreadsheets/' + h.SHEET_ID + '/values/' + encodeURIComponent(PESTANA + '!A2:M5000'), null, { Authorization: 'Bearer ' + token });
   if (r.status === 400) return [];   // todavía no hay pestaña: aún no llega ningún mensaje
   if (r.status !== 200) throw new Error('Google Sheets respondió ' + r.status);
   const filas = JSON.parse(r.body).values || [];
