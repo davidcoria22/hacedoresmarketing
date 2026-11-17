@@ -6,7 +6,7 @@
   <title>Panel · Hacedores</title>
   <link rel="icon" type="image/jpeg" href="icono-hacedores.jpg">
   <link rel="apple-touch-icon" href="icono-hacedores.jpg">
-  <link rel="stylesheet" href="styles.css?v=rosa35">
+  <link rel="stylesheet" href="styles.css?v=rosa39">
   <script>document.documentElement.classList.add('verificando')</script>
 </head>
 <body data-vista="inicio">
@@ -61,12 +61,19 @@
 
     <!-- MENSAJES -->
     <main class="vista" id="vista-mensajes" hidden>
-      <div class="tit-vista">
-        <div><h1 class="saludo">Mensajes</h1><p class="fecha">Toca una conversación para verla completa</p></div>
-        <span class="acc-msg"><button id="actualizar-msg" class="mini-msg en-vivo" title="Se actualiza solo. Toca para actualizar ya"><i></i><span>En vivo</span></button><button id="salir-msg" class="mini-msg" title="Cerrar sesión" hidden>Salir</button></span>
-      </div>
-      <div id="zona-msg">
-        <div class="cols-msg" id="cols-msg"><div class="vacio-msg">Cargando…</div></div>
+      <div class="msg-app">
+        <section class="col-red msg-lista" aria-label="Conversaciones">
+          <div class="msg-cab">
+            <div class="msg-redes" id="msg-redes" role="tablist" aria-label="Red social"></div>
+            <span class="acc-msg"><button id="actualizar-msg" class="mini-msg en-vivo" title="Se actualiza solo. Toca para actualizar ya"><i></i><span>En vivo</span></button><button id="salir-msg" class="mini-msg" title="Cerrar sesión" hidden>Salir</button></span>
+          </div>
+          <label class="msg-buscar"><svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><input id="buscar-msg" type="search" placeholder="Buscar una conversación" autocomplete="off" aria-label="Buscar una conversación"></label>
+          <div class="filtros-col" id="msg-filtros" hidden></div>
+          <div class="lista-col" id="lista-msg"><div class="vacio-msg">Cargando…</div></div>
+        </section>
+        <section class="msg-chat" aria-label="Conversación">
+          <div class="conv inline" id="chat-panel"></div>
+        </section>
       </div>
     </main>
 
@@ -125,8 +132,8 @@
     <section class="conv" id="conv" role="dialog" aria-modal="true" aria-label="Conversación"></section>
   </div>
 
-  <script src="mapa2d.js?v=rosa35"></script>
-  <script src="mascotas.js?v=rosa35"></script>
-  <script src="app.js?v=rosa35"></script>
+  <script src="mapa2d.js?v=rosa39"></script>
+  <script src="mascotas.js?v=rosa39"></script>
+  <script src="app.js?v=rosa39"></script>
 </body>
 </html>

@@ -501,3 +501,44 @@ label.chico { font-size: 12px; color: var(--suave); }
 .rol-info { flex: 1; min-width: 0; } .rol-info p { margin: 2px 0 0; font-size: 12.5px; color: var(--suave); } .rol-info small { color: var(--suave); }
 .perm { display: flex !important; flex-direction: row !important; align-items: center; gap: 8px; font-size: 13.5px; padding: 3px 0; cursor: pointer; }
 .perm input { accent-color: var(--rosa); }
+
+/* Mensajes estilo WhatsApp Web: lista a la izquierda, conversación a la derecha */
+.msg-app { flex: none; display: grid; grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(300px, 390px) minmax(0, 1fr); gap: 14px; height: calc(100vh - 100px); min-height: 520px; }
+.msg-lista { display: flex; flex-direction: column; min-height: 0; padding: 14px 10px 10px; }
+.msg-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 6px 10px; }
+.msg-redes { display: flex; gap: 8px; }
+.red-tab { position: relative; width: 42px; height: 42px; border: 0; border-radius: 50%; background: #444441; color: #D3D1C7; display: grid; place-items: center; cursor: pointer; transition: background .15s, transform .15s; }
+.red-tab svg { width: 21px; height: 21px; }
+.red-tab:hover { background: #5F5E5A; color: #fff; }
+.red-tab.activo { background: #fff; color: #2B2B2A; transform: scale(1.04); }
+.red-aviso { position: absolute; top: 1px; right: 1px; width: 11px; height: 11px; border-radius: 50%; background: var(--rosa); border: 2px solid #2B2B2A; }
+.red-tab.activo .red-aviso { border-color: #fff; }
+.msg-lista .acc-msg .mini-msg { background: #444441; color: #D3D1C7; font-size: 12px; padding: 6px 12px; }
+.msg-lista .acc-msg .mini-msg:hover { background: #5F5E5A; color: #fff; }
+.msg-buscar { position: relative; display: block; margin: 0 6px 10px; color: #B4B2A9; }
+.msg-buscar svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); pointer-events: none; }
+.msg-buscar input { width: 100%; border: 0; border-radius: 999px; background: #3a3a38; color: #fff; font: inherit; font-size: 13.5px; padding: 10px 14px 10px 38px; }
+.msg-buscar input::placeholder { color: #B4B2A9; }
+.msg-buscar input:focus { outline: 2px solid var(--rosa); }
+.msg-lista .lista-col { flex: 1; max-height: none; min-height: 0; }
+.msg-lista .ct { padding: 10px; gap: 12px; }
+.msg-lista .ct .av { width: 40px; height: 40px; font-size: 15px; }
+.msg-lista .ct .n { font-size: 14.5px; } .msg-lista .ct .s { font-size: 12.5px; }
+.msg-chat { min-width: 0; min-height: 0; display: flex; }
+.conv.inline { width: 100%; max-height: none; height: 100%; box-shadow: none; min-height: 0; }
+.conv.inline .hilo { max-height: none; }
+.conv.inline .cerrar-conv { display: none; }
+.chat-vacio { margin: auto; text-align: center; color: #8d8b83; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.chat-vacio p { margin: 0; font-size: 14px; }
+@media (max-width: 900px) {
+  .msg-app { grid-template-columns: minmax(0, 1fr); height: calc(100vh - 230px); min-height: 480px; }
+  .msg-app .msg-chat { display: none; }
+  .msg-app.con-chat .msg-lista { display: none; }
+  .msg-app.con-chat .msg-chat { display: flex; }
+  .conv.inline .cerrar-conv { display: block; }   /* en celular sirve para volver a la lista */
+}
+
+/* En Mensajes no hay contenedor: la lista y el chat van directo sobre el fondo, con el mismo espacio arriba y abajo que el menú */
+body[data-vista="mensajes"] .lienzo { background: none; padding: 0; border-radius: 0; min-height: 0; }
+body[data-vista="mensajes"] .msg-app { height: calc(100vh - 28px); min-height: 480px; }
+@media (max-width: 900px) { body[data-vista="mensajes"] .msg-app { height: calc(100vh - 230px); min-height: 460px; } }

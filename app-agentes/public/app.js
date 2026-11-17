@@ -73,13 +73,16 @@ const COLORES = ['#5E8C61', '#E08A4B', '#5E7FB0', '#C4553D', '#8A6FB0', '#3E8C8C
 // ---------- menú: una sección a la vez ----------
 function irA(vista) {
   if (!vistaPermitida(vista)) vista = primeraVista();
+  const previa = document.body.dataset.vista;
   document.body.dataset.vista = vista;
+  if (previa === 'mensajes' && vista !== 'mensajes') { convActiva = ''; const ap = document.querySelector('.msg-app'); if (ap) ap.classList.remove('con-chat'); }   // al salir de Mensajes no queda una conversación abierta
+  if (vista === 'mensajes') $('#modal-conv').hidden = true;   // si venías de una ventana emergente en Inicio, ahora se ve en el panel
   document.querySelectorAll('.vista').forEach(v => { v.hidden = v.id !== 'vista-' + vista; });
   document.querySelectorAll('.menu button').forEach(b => b.classList.toggle('activo', b.dataset.vista === vista));
   try { localStorage.setItem('vista', vista); } catch { /* sin almacenamiento */ }
   if (vista === 'redes') setTimeout(pintarGrafica, 0);   // la gráfica necesita medir su ancho ya visible
   if (vista === 'inicio') setTimeout(pintarGraficaInicio, 0);
-  if (vista === 'mensajes') cargarMensajes();
+  if (vista === 'mensajes') { pintarColumnas(); pintarConversacion(); cargarMensajes(); }
   mapaSegunVista(vista);
   if (vista === 'usuarios') pintarUsuarios();
 }
@@ -967,34 +970,56 @@ function etiquetaRed(lista) {
   const p = lista.filter(pendiente).length;
   return `<span class="etq-red ${p ? 'p' : ''}">${p ? p + (p === 1 ? ' pendiente' : ' pendientes') : 'al día'}</span>`;
 }
+// Sección Mensajes: lista de conversaciones a la izquierda y la conversación abierta a la derecha (como WhatsApp Web)
+let redMsg = 'whatsapp', busquedaMsg = '';
+try { const v = localStorage.getItem('red-mensajes'); if (RED_MSG[v]) redMsg = v; } catch { /* sin almacenamiento */ }
+const enMensajes = () => document.body.dataset.vista === 'mensajes';
 function pintarColumnas() {
-  const cont = $('#cols-msg');
-  const scrolls = [...cont.querySelectorAll('.lista-col')].map(e => e.scrollTop);   // para no perder dónde ibas al refrescar
-  cont.innerHTML = Object.entries(RED_MSG).map(([id, r]) => {
-    const todas = conversaciones.filter(c => c.red === id);
-    let lista = todas, filtros = '';
-    if (id === 'whatsapp') {
-      const f = FILTROS_WA.find(x => x.id === filtroWa) || FILTROS_WA[0];
-      lista = todas.filter(f.pasa);
-      filtros = '<div class="filtros-col" role="group" aria-label="Filtrar WhatsApp">' + FILTROS_WA.map(x =>
-        '<button type="button" class="filtro-wa ' + (x.id === filtroWa ? 'activo' : '') + '" data-filtro="' + x.id + '" aria-pressed="' + (x.id === filtroWa) + '"' + (x.ayuda ? ' title="' + x.ayuda + '"' : '') + '>' + x.texto + ' <small>' + todas.filter(x.pasa).length + '</small></button>').join('') + '</div>';
-    }
-    return `<section class="col-red"><div class="cab"><svg viewBox="0 0 24 24" aria-hidden="true">${r.icono}</svg>${r.nombre}${etiquetaRed(todas)}</div>${filtros}
-      <div class="lista-col">${lista.length ? lista.map(filaColumna).join('') : '<div class="sin">' + (todas.length ? 'Ninguna conversación con este filtro.' : 'Todavía no hay conversaciones.') + '</div>'}</div></section>`;
+  const lista = $('#lista-msg'); if (!lista) return;
+  const scrollLista = lista.scrollTop;   // para no perder dónde ibas al refrescar
+  $('#msg-redes').innerHTML = Object.entries(RED_MSG).map(([id, r]) => {
+    const p = conversaciones.filter(c => c.red === id && pendiente(c)).length;
+    return `<button type="button" class="red-tab ${id === redMsg ? 'activo' : ''}" data-red="${id}" role="tab" aria-selected="${id === redMsg}" aria-label="${r.nombre}" title="${r.nombre}${p ? ' · ' + p + (p === 1 ? ' pendiente' : ' pendientes') : ''}"><svg viewBox="0 0 24 24" aria-hidden="true">${r.icono}</svg>${p ? '<i class="red-aviso"></i>' : ''}</button>`;
   }).join('');
-  cont.querySelectorAll('.lista-col').forEach((e, i) => { if (scrolls[i]) e.scrollTop = scrolls[i]; });
-  cont.querySelectorAll('[data-conv]').forEach(b => b.addEventListener('click', () => abrirConversacion(b.dataset.conv)));
-  cont.querySelectorAll('.filtro-wa').forEach(b => b.addEventListener('click', () => {
+  const todas = conversaciones.filter(c => c.red === redMsg);
+  let visibles = todas;
+  const filtros = $('#msg-filtros');
+  if (redMsg === 'whatsapp') {
+    const f = FILTROS_WA.find(x => x.id === filtroWa) || FILTROS_WA[0];
+    visibles = todas.filter(f.pasa);
+    filtros.hidden = false;
+    filtros.innerHTML = FILTROS_WA.map(x => '<button type="button" class="filtro-wa ' + (x.id === filtroWa ? 'activo' : '') + '" data-filtro="' + x.id + '" aria-pressed="' + (x.id === filtroWa) + '"' + (x.ayuda ? ' title="' + x.ayuda + '"' : '') + '>' + x.texto + ' <small>' + todas.filter(x.pasa).length + '</small></button>').join('');
+  } else { filtros.hidden = true; filtros.innerHTML = ''; }
+  const q = busquedaMsg.trim().toLowerCase();
+  if (q) visibles = visibles.filter(c => (c.titulo + ' ' + c.telefono + ' ' + c.mensajes.map(m => m.texto).join(' ')).toLowerCase().includes(q));
+  lista.innerHTML = visibles.length ? visibles.map(filaColumna).join('') : '<div class="sin">' + (q ? 'Sin resultados.' : todas.length ? 'Ninguna conversación con este filtro.' : 'Todavía no hay conversaciones.') + '</div>';
+  lista.scrollTop = scrollLista;
+  lista.querySelectorAll('[data-conv]').forEach(b => b.addEventListener('click', () => abrirConversacion(b.dataset.conv)));
+  filtros.querySelectorAll('.filtro-wa').forEach(b => b.addEventListener('click', () => {
     filtroWa = b.dataset.filtro;
     try { localStorage.setItem('filtro-whatsapp', filtroWa); } catch { /* sin almacenamiento */ }
     pintarColumnas();
   }));
+  $('#msg-redes').querySelectorAll('[data-red]').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.red === redMsg) return;
+    redMsg = b.dataset.red; convActiva = '';
+    try { localStorage.setItem('red-mensajes', redMsg); } catch { /* sin almacenamiento */ }
+    pintarColumnas(); pintarConversacion();
+  }));
+  const app = document.querySelector('.msg-app'); if (app) app.classList.toggle('con-chat', !!convActiva && enMensajes());
 }
+const buscarMsg = $('#buscar-msg');
+if (buscarMsg) buscarMsg.addEventListener('input', () => { busquedaMsg = buscarMsg.value; pintarColumnas(); });
 function pintarConversacion(desplazar) {
-  const cont = $('#conv'), modal = $('#modal-conv');
+  const panel = enMensajes();
+  const cont = panel ? $('#chat-panel') : $('#conv'), modal = $('#modal-conv');
   const c = conversaciones.find(x => x.clave === convActiva);
-  if (!c) { modal.hidden = true; return; }
-  modal.hidden = false;
+  if (!c) {
+    modal.hidden = true;
+    if (panel) { cont.dataset.clave = ''; cont.innerHTML = '<div class="chat-vacio"><svg viewBox="0 0 24 24" width="44" height="44" aria-hidden="true"><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3.5V16H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg><p>Elige una conversación para verla aquí</p></div>'; }
+    return;
+  }
+  modal.hidden = panel;   // en Mensajes no hay ventana emergente: la conversación va en el panel
   const r = RED_MSG[c.red];
   const hiloPrev = cont.querySelector('.hilo'), mismaConv = cont.dataset.clave === c.clave;   // al refrescar solo, no te mueve si estabas leyendo arriba
   const alFinal = !hiloPrev || !mismaConv || hiloPrev.scrollHeight - hiloPrev.scrollTop - hiloPrev.clientHeight < 70, topPrev = hiloPrev ? hiloPrev.scrollTop : 0;
@@ -1046,7 +1071,7 @@ function cajaRespuesta(c) {
 }
 let enfocarRespuesta = false;   // después de enviar, el cursor vuelve a la caja para seguir escribiendo
 function activarRespuesta(c, borrador, teniaFoco) {
-  const cont = $('#conv');
+  const cont = enMensajes() ? $('#chat-panel') : $('#conv');
   const caja = cont.querySelector('.resp');
   if (!caja) return;
   const texto = caja.querySelector('.resp-texto'), enviar = caja.querySelector('.resp-enviar'), error = caja.querySelector('.resp-error');
@@ -1095,6 +1120,13 @@ function animarConversacion(entrando) {
   return caja.animate(cuadros, { duration: entrando ? 520 : 300, easing: entrando ? CURVA_IOS : 'cubic-bezier(.4, 0, .2, 1)', fill }).finished.catch(() => {});
 }
 function abrirConversacion(clave) {
+  if (enMensajes()) {   // en Mensajes se abre en el panel de la derecha, sin ventana emergente
+    const otra = convActiva !== clave;
+    convActiva = clave;
+    if (otra) $('#chat-panel').dataset.clave = '';   // empieza en el último mensaje
+    pintarColumnas(); pintarConversacion();
+    return;
+  }
   const nueva = $('#modal-conv').hidden;
   convActiva = clave;
   if (nueva) $('#conv').dataset.clave = '';   // al abrirla de nuevo empieza en el último mensaje
@@ -1103,6 +1135,7 @@ function abrirConversacion(clave) {
 }
 let cerrandoConv = false;
 async function cerrarConversacion() {
+  if (enMensajes()) { convActiva = ''; pintarColumnas(); pintarConversacion(); return; }   // en el panel solo se quita la selección (en celular, regresa a la lista)
   if (cerrandoConv || $('#modal-conv').hidden) return;
   cerrandoConv = true;
   await Promise.race([animarConversacion(false), new Promise(r => setTimeout(r, 450))]);   // tope por si el navegador pausa la animación
@@ -1162,7 +1195,7 @@ function pintarReloj() {
 setInterval(pintarReloj, 1000);
 
 function formularioClave(texto) {
-  $('#cols-msg').innerHTML = `<form class="clave-msg" id="form-clave"><p>${esc(texto)}</p>
+  $('#lista-msg').innerHTML = `<form class="clave-msg" id="form-clave"><p>${esc(texto)}</p>
     <input type="password" id="clave-msg" placeholder="Contraseña" autocomplete="current-password" required>
     <button type="submit">Entrar</button><span class="error-msg" id="error-clave"></span></form>`;
   $('#modal-conv').hidden = true;
@@ -1192,8 +1225,8 @@ async function cargarMensajes(forzar) {
       $('#inicio-msg').innerHTML = '<div class="vacio-msg">Entra a Mensajes con tu contraseña para verlos aquí.</div>';
       return;
     }
-    if (r.status === 403) { mensajesBloqueado = true; $('#cols-msg').innerHTML = '<div class="vacio-msg">Tu rol no puede ver los mensajes.</div>'; return; }
-    if (!r.ok) { fallosMensajes++; estadoEnVivo(false); if (!firmaMensajes) $('#cols-msg').innerHTML = `<div class="vacio-msg">${esc(j.error || 'No se pudieron cargar')}</div>`; return; }
+    if (r.status === 403) { mensajesBloqueado = true; $('#lista-msg').innerHTML = '<div class="vacio-msg">Tu rol no puede ver los mensajes.</div>'; return; }
+    if (!r.ok) { fallosMensajes++; estadoEnVivo(false); if (!firmaMensajes) $('#lista-msg').innerHTML = `<div class="vacio-msg">${esc(j.error || 'No se pudieron cargar')}</div>`; return; }
     fallosMensajes = 0; estadoEnVivo(true);
     const firma = firmaDe(j);
     if (!forzar && firma === firmaMensajes) return;   // nada nuevo: no se redibuja (así no se pierde lo que estás haciendo)
@@ -1202,7 +1235,7 @@ async function cargarMensajes(forzar) {
     resumenCola = j.resumen || resumenCola;
     finProximo = resumenCola.proximo ? Date.parse(resumenCola.proximo) : 0;
     pintarColumnas(); pintarConversacion(); pintarInicioMensajes(); pintarPorcentajes(); pintarGrandes(); pintarReloj();
-  } catch { fallosMensajes++; estadoEnVivo(false); if (!firmaMensajes) $('#cols-msg').innerHTML = '<div class="vacio-msg">Sin conexión con el servidor.</div>'; }
+  } catch { fallosMensajes++; estadoEnVivo(false); if (!firmaMensajes) $('#lista-msg').innerHTML = '<div class="vacio-msg">Sin conexión con el servidor.</div>'; }
   finally { cargandoMensajes = false; }
 }
 function programarMensajes() {
