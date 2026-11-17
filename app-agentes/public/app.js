@@ -792,7 +792,11 @@ function armarConversaciones(lista) {
     const enEspera = sinResp && ult.respuesta === 'programada';
     const delAnuncio = c.mensajes.some(m => String(m.origen).startsWith('anuncio'));
     const agenteRespondio = c.mensajes.some(m => (m.direccion === 'salida' && m.origen === 'agente') || (m.direccion !== 'salida' && m.respuesta === 'enviada'));   // lo segundo cubre los mensajes anteriores a guardar las respuestas
-    return { ...c, ult, delAnuncio, agenteRespondio, titulo: c.nombre || c.telefono || 'Sin nombre', estado: enEspera ? 'espera' : sinResp ? 'sin' : 'ok' };
+    // Archivada: el agente ya mandó su primer mensaje automático y la persona no ha escrito nada después. Si vuelve a escribir, reaparece sola.
+    const auto = c.mensajes.find(m => m.direccion === 'salida' && m.origen === 'agente') || c.mensajes.find(m => m.direccion !== 'salida' && m.respuesta === 'enviada');   // lo segundo cubre los mensajes anteriores a guardar las respuestas
+    const tAuto = auto ? Date.parse(auto.fecha) : 0;
+    const archivada = c.red === 'whatsapp' && tAuto > 0 && !c.mensajes.some(m => m.direccion !== 'salida' && Date.parse(m.fecha) > tAuto);
+    return { ...c, ult, delAnuncio, agenteRespondio, archivada, titulo: c.nombre || c.telefono || 'Sin nombre', estado: enEspera ? 'espera' : sinResp ? 'sin' : 'ok' };
   }).sort((a, b) => new Date(b.ult.fecha) - new Date(a.ult.fecha));
 }
 const pendiente = c => c.estado !== 'ok';
@@ -814,14 +818,15 @@ function filaContacto(c) {
     <span class="av">${esc(inicial(c))}</span><span class="x"><span class="n">${esc(c.titulo)}</span><span class="s">${esc(vistaPrevia(c))}</span></span><span class="punto ${pendiente(c) ? '' : 'ok'}"></span></button>`;
 }
 function filaColumna(c) {
-  const etqs = c.red === 'whatsapp' ? (c.delAnuncio ? '<i class="mini-etq">Anuncio</i>' : '') + (c.agenteRespondio ? '<i class="mini-etq ok">Respuesta del agente</i>' : '') : '';
+  const etqs = c.red === 'whatsapp' ? (c.archivada && filtroWa !== 'archivados' ? '<i class="mini-etq">Archivado</i>' : '') + (c.delAnuncio ? '<i class="mini-etq">Anuncio</i>' : '') + (c.agenteRespondio ? '<i class="mini-etq ok">Respuesta del agente</i>' : '') : '';
   return filaContacto(c).replace('</button>', (etqs ? '<span class="mini-etqs">' + etqs + '</span>' : '') + '</button>').replace('class="ct ', 'class="ct ' + (etqs ? 'con-etq ' : ''));
 }
 // Filtro de la columna de WhatsApp: todos, solo los que llegaron de un anuncio, o los que ya contestó el agente
 const FILTROS_WA = [
-  { id: 'todos', texto: 'Todos', pasa: () => true },
+  { id: 'todos', texto: 'Todos', ayuda: 'Las conversaciones activas (sin las archivadas)', pasa: c => !c.archivada },
   { id: 'anuncios', texto: 'Anuncios', pasa: c => c.delAnuncio },
   { id: 'agente', texto: 'Respuesta enviada', ayuda: 'Conversaciones a las que el agente ya les mandó su respuesta', pasa: c => c.agenteRespondio },
+  { id: 'archivados', texto: 'Archivados', ayuda: 'Ya recibieron el primer mensaje automático y la persona no ha vuelto a escribir. Si escribe, reaparecen en Todos', pasa: c => c.archivada },
 ];
 let filtroWa = 'todos';
 try { const f = localStorage.getItem('filtro-whatsapp'); if (FILTROS_WA.some(x => x.id === f)) filtroWa = f; } catch { /* sin almacenamiento */ }
@@ -994,7 +999,7 @@ function pintarInicioMensajes() {
   cont.innerHTML = Object.entries(RED_MSG).map(([id, r]) => {
     const lista = conversaciones.filter(c => c.red === id);
     return `<div class="grupo-h"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">${r.icono}</svg>${r.nombre}${etiquetaRed(lista)}</div>
-      ${lista.slice(0, 2).map(filaContacto).join('') || '<div class="vacio-msg">Sin conversaciones.</div>'}`;
+      ${lista.filter(c => !c.archivada).slice(0, 2).map(filaContacto).join('') || '<div class="vacio-msg">Sin conversaciones activas.</div>'}`;
   }).join('');
   cont.querySelectorAll('[data-conv]').forEach(b => b.addEventListener('click', () => abrirConversacion(b.dataset.conv)));
   $('#aviso-mensajes').hidden = !conversaciones.some(pendiente);
