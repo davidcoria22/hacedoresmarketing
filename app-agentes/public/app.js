@@ -584,14 +584,14 @@ async function pintarUsuarios() {
   const iniciales = u => (u.nombre || u.email).split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase() || '?';
   const filaUsuario = u => {
     const yoMismo = u.email === (miEmail || '').toLowerCase();
-    const fijo = u.origen === 'vercel' || yoMismo;
+    const fijo = yoMismo;   // nadie cambia su propio acceso; a los demás, incluso a los de Vercel, sí se les cambia el rol
     return `<div class="usr-fila ${u.activo ? '' : 'inactivo'}" data-email="${esc(u.email)}">
       <span class="avatar">${esc(iniciales(u))}</span>
-      <span class="usr-datos"><b>${esc(u.nombre || u.email.split('@')[0])}${yoMismo ? ' <i class="mini-etq-c">tú</i>' : ''}</b><small>${esc(u.email)}</small></span>
-      ${fijo ? `<span class="rol-fijo">${esc(u.rol)}${u.origen === 'vercel' ? ' · desde Vercel' : ''}</span>`
+      <span class="usr-datos"><b>${esc(u.nombre || u.email.split('@')[0])}${yoMismo ? ' <i class="mini-etq-c">tú</i>' : ''}</b><small>${esc(u.email)}${u.origen === 'vercel' ? ' · cuenta de Vercel' : ''}</small></span>
+      ${fijo ? `<span class="rol-fijo">${esc(u.rol)} · no puedes cambiar tu propio acceso</span>`
         : `<select class="sel-rol" aria-label="Rol de ${esc(u.email)}">${opcionesRol(u.rol)}</select>
            <button type="button" class="mini-acc" data-activo="${u.activo ? '0' : '1'}">${u.activo ? 'Desactivar' : 'Activar'}</button>
-           <button type="button" class="mini-acc peligro" data-quitar>Quitar</button>`}
+           ${u.origen === 'vercel' ? '' : '<button type="button" class="mini-acc peligro" data-quitar>Quitar</button>'}`}
     </div>`;
   };
   const filaRol = r => `<div class="rol-fila"><div class="rol-info"><b>${esc(r.nombre)}</b> <small>${r.enUso ? 'en uso' : 'sin personas'}${r.fijo ? ' · fijo' : r.editado ? ' · ajustado' : r.propio ? ' · tuyo' : ''}</small><p>${esc(r.descripcion || '')}</p></div><button type="button" class="mini-acc" data-rol="${esc(r.nombre)}">${r.fijo ? 'Ver' : 'Editar'}</button></div>`;

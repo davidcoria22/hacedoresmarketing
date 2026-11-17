@@ -100,14 +100,18 @@ const TODOS = () => new Set(IDS);
 async function acceso(email) {
   email = String(email || '').trim().toLowerCase();
   if (!email) return null;
-  if (lista(process.env.AUTH_EMAILS).includes(email)) return { rol: 'Administrador', permisos: TODOS(), origen: 'vercel' };   // siempre pueden entrar y administrar
-  const { usuarios, roles } = await cargar();
+  const deVercel = lista(process.env.AUTH_EMAILS).includes(email);
+  let datos;
+  try { datos = await cargar(); }
+  catch (e) { if (deVercel) return { rol: 'Administrador', permisos: TODOS(), origen: 'vercel' }; throw e; }   // si la hoja falla, quien está en Vercel sigue pudiendo entrar
+  const { usuarios, roles } = datos;
   const u = usuarios.find(x => x.email === email);
-  if (u) {
+  if (u) {   // lo que se guarda en el panel manda, también para las cuentas de Vercel
     if (!u.activo) return null;
     const rol = roles.find(r => r.nombre.toLowerCase() === u.rol.toLowerCase());
-    return { rol: rol ? rol.nombre : u.rol, permisos: conjunto(rol), origen: 'hoja' };
+    return { rol: rol ? rol.nombre : u.rol, permisos: conjunto(rol), origen: deVercel ? 'vercel' : 'hoja' };
   }
+  if (deVercel) return { rol: 'Administrador', permisos: TODOS(), origen: 'vercel' };   // sin cambios guardados: administrador
   const dominio = email.split('@')[1];
   if (dominio && lista(process.env.AUTH_DOMINIOS).includes(dominio)) {
     const nombre = process.env.AUTH_ROL_DOMINIO || 'Solo lectura';
@@ -120,7 +124,7 @@ async function acceso(email) {
 // ---------- lo que ve y edita la pantalla de administración ----------
 async function listar() {
   const { usuarios, roles } = await cargar();
-  const env = lista(process.env.AUTH_EMAILS).map(email => ({ email, nombre: '', rol: 'Administrador', activo: true, origen: 'vercel' }));
+  const env = lista(process.env.AUTH_EMAILS).map(email => { const u = usuarios.find(x => x.email === email); return u ? { ...u, origen: 'vercel' } : { email, nombre: '', rol: 'Administrador', activo: true, origen: 'vercel' }; });
   const deLaHoja = usuarios.filter(u => !env.some(e => e.email === u.email)).map(u => ({ ...u, origen: 'hoja' }));
   const usados = new Set([...env, ...deLaHoja].map(u => u.rol.toLowerCase()));
   return { permisos: PERMISOS, usuarios: [...env, ...deLaHoja], roles: roles.map(r => ({ ...r, enUso: usados.has(r.nombre.toLowerCase()) })) };
@@ -129,7 +133,6 @@ async function listar() {
 async function guardarUsuario(d, quien) {
   const email = String(d.email || '').trim().toLowerCase();
   if (!esEmail(email)) return { ok: false, error: 'Escribe un correo válido.' };
-  if (lista(process.env.AUTH_EMAILS).includes(email)) return { ok: false, error: 'Esa cuenta es administradora desde Vercel y no se cambia aquí.' };
   if (email === String(quien || '').toLowerCase()) return { ok: false, error: 'No puedes cambiar tu propio acceso (para que nunca te quedes sin poder entrar).' };
   const { roles, usuarios } = await cargar();
   const rol = roles.find(r => r.nombre.toLowerCase() === String(d.rol || '').toLowerCase());
@@ -144,7 +147,7 @@ async function guardarUsuario(d, quien) {
 async function quitarUsuario(email, quien) {
   email = String(email || '').trim().toLowerCase();
   if (email === String(quien || '').toLowerCase()) return { ok: false, error: 'No puedes quitarte a ti mismo.' };
-  if (lista(process.env.AUTH_EMAILS).includes(email)) return { ok: false, error: 'Esa cuenta es administradora desde Vercel y no se quita aquí.' };
+  if (lista(process.env.AUTH_EMAILS).includes(email)) return { ok: false, error: 'Esa cuenta viene de Vercel y no se quita desde aquí. Puedes cambiarle el rol o desactivarla.' };
   const h = ayudas(), token = await h.tokenGoogle('spreadsheets');
   await borrarFila(h, token, 'Usuarios', email);
   return { ok: true };
