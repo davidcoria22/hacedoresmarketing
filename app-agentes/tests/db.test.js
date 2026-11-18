@@ -7,7 +7,7 @@ let llamadas, respuesta, db;
 test.beforeEach(() => {
   for (const k of ENV) delete process.env[k];
   process.env.SUPABASE_URL = 'https://abc.supabase.co';
-  process.env.SUPABASE_SERVICE_KEY = 'llave-de-prueba';
+  process.env.SUPABASE_SERVICE_KEY = 'eyJ-llave-de-prueba';
   llamadas = [];
   respuesta = { status: 200, body: '[]' };
   global.fetch = async (url, opciones = {}) => {
@@ -24,8 +24,8 @@ test('select arma la URL con los filtros y manda las dos cabeceras', async () =>
   assert.deepStrictEqual(filas, [{ id: 'a' }]);
   assert.strictEqual(llamadas[0].metodo, 'GET');
   assert.strictEqual(llamadas[0].url, 'https://abc.supabase.co/rest/v1/pendientes?estado=eq.pendiente&limit=20');
-  assert.strictEqual(llamadas[0].cab.apikey, 'llave-de-prueba');
-  assert.strictEqual(llamadas[0].cab.Authorization, 'Bearer llave-de-prueba');
+  assert.strictEqual(llamadas[0].cab.apikey, 'eyJ-llave-de-prueba');
+  assert.strictEqual(llamadas[0].cab.Authorization, 'Bearer eyJ-llave-de-prueba');
 });
 
 test('insert con ignorarDuplicados pide ignore-duplicates y on_conflict', async () => {
