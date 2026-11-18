@@ -16,7 +16,7 @@ function crear(inicial = {}, claves = {}) {
     if (op === 'neq') return String(x) !== v;
     if (op === 'lte') return Date.parse(x) <= Date.parse(v);
     if (op === 'gte') return Date.parse(x) >= Date.parse(v);
-    if (op === 'in') return v.slice(1, -1).split(',').includes(String(x));
+    if (op === 'in') return v.slice(1, -1).split(',').map(s => s.replace(/^"|"$/g, '')).includes(String(x));
     throw new Error('operador no soportado en el simulador: ' + op);
   });
   const ordenar = (filas, orden) => {

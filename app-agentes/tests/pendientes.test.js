@@ -93,3 +93,12 @@ test('estados devuelve el estado de los mensajes principales (no de los seguimie
   preparar([fila('a', { estado: 'enviado' }), fila('b'), fila('b:seg', { tipo: 'seguimiento' })]);
   assert.deepStrictEqual(await pendientes.estados(), { a: 'enviado', b: 'pendiente' });
 });
+
+test('los ids con puntos o dos puntos (wamid.X, wamid.X:seg) van entrecomillados en el filtro in(...)', async () => {
+  preparar([fila('wamid.A=='), fila('wamid.B:seg', { tipo: 'seguimiento' })]);
+  const enviados = [];
+  await pendientes.procesar(async (tel, tipo, id) => { enviados.push(id); }, AHORA);
+  assert.deepStrictEqual(enviados.sort(), ['wamid.A==', 'wamid.B:seg']);
+  const reserva = sb.llamadas.find(l => l.metodo === 'PATCH' && l.params.id.startsWith('in.'));
+  assert.strictEqual(reserva.params.id, 'in.("wamid.A==","wamid.B:seg")');
+});

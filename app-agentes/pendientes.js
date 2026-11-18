@@ -7,7 +7,8 @@ const COLUMNAS = ['id', 'telefono', 'vence', 'estado', 'detalle', 'creado', 'tip
 const ayudas = () => require('./server.js').ayudas;
 const db = require('./db.js');
 const sb = () => db.usa('pendientes');
-const lista_ = ids => 'in.(' + ids.join(',') + ')';
+// Los valores van entre comillas dobles: los ids de WhatsApp llevan puntos y dos puntos, caracteres reservados de PostgREST
+const lista_ = ids => 'in.(' + ids.map(i => '"' + String(i).replace(/(["\\])/g, '\\$1') + '"').join(',') + ')';
 const mascara = n => { n = String(n || '').replace(/\D/g, ''); return n ? '+' + n.slice(0, 2) + '••••' + n.slice(-4) : ''; };
 const soloDigitos = n => String(n || '').replace(/\D/g, '');
 
