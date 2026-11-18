@@ -8,6 +8,7 @@ const DIR = path.join(__dirname, '..', 'agentes', 'whatsapp');
 const PESTANA = 'Anuncios';
 const COLUMNAS = ['id', 'nombre', 'palabras', 'mensaje', 'seguimiento', 'actualizado'];
 const ayudas = () => require('./server.js').ayudas;
+const db = require('./db.js');
 const cabeceras = token => ({ Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' });
 const base = h => 'https://sheets.googleapis.com/v4/spreadsheets/' + h.SHEET_ID;
 const rango = (h, a) => base(h) + '/values/' + encodeURIComponent(PESTANA + '!' + a);
@@ -42,8 +43,13 @@ async function listar() {
   if (cache.v && Date.now() - cache.t < 20000) return cache.v;
   const lista = deArchivos();
   try {
-    const h = ayudas(), token = await h.tokenGoogle('spreadsheets.readonly');
-    const filas = (await leerFilas(h, token)) || [];
+    let filas;
+    if (db.usa('anuncios')) {   // misma forma de fila que la hoja: [id, nombre, palabras, mensaje, seguimiento]
+      filas = (await db.select('anuncios')).map(a => [a.id, a.nombre, (a.palabras || []).join(', '), a.mensaje, a.seguimiento, a.actualizado]);
+    } else {
+      const h = ayudas(), token = await h.tokenGoogle('spreadsheets.readonly');
+      filas = (await leerFilas(h, token)) || [];
+    }
     for (const f of filas) {
       const id = String(f[0] || '').trim(); if (!id) continue;
       const palabras = String(f[2] || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -99,6 +105,11 @@ async function guardar(entrada) {
   if (palabras.some(p => p.length < 3)) return { ok: false, error: 'Cada palabra clave debe tener al menos 3 letras.' };
   if (!existente && lista.some(a => a.id === id)) return { ok: false, error: 'Ya existe un anuncio con ese nombre.' };
   const fila = [id, nombre || existente.nombre, general ? '' : palabras.join(', '), mensaje, seguimiento, new Date().toISOString()];
+  if (db.usa('anuncios')) {
+    await db.upsert('anuncios', [{ id, nombre: fila[1], palabras: general ? [] : palabras, mensaje, seguimiento, actualizado: fila[5] }], 'id');
+    cache = { t: 0, v: null };
+    return { ok: true, id };
+  }
   const h = ayudas(), token = await h.tokenGoogle('spreadsheets');
   let filas = await leerFilas(h, token);
   if (filas === null) { await crearPestana(h, token); filas = []; }
@@ -118,6 +129,7 @@ async function guardar(entrada) {
 async function quitar(id) {
   id = String(id || '');
   if (!id) return { ok: false, error: 'Falta el anuncio.' };
+  if (db.usa('anuncios')) { await db.remove('anuncios', { id: 'eq.' + id }); cache = { t: 0, v: null }; return { ok: true }; }
   const h = ayudas(), token = await h.tokenGoogle('spreadsheets');
   const filas = await leerFilas(h, token);
   const i = (filas || []).findIndex(f => String(f[0] || '') === id);
