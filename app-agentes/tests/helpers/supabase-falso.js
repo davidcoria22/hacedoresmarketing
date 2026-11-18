@@ -10,7 +10,7 @@ function crear(inicial = {}, claves = {}) {
     return m ? (fila[m[1]] ? fila[m[1]][m[2]] : undefined) : fila[col];
   };
   const cumple = (fila, params) => Object.entries(params).every(([col, cond]) => {
-    if (['order', 'limit', 'select', 'on_conflict'].includes(col)) return true;
+    if (['order', 'limit', 'offset', 'select', 'on_conflict'].includes(col)) return true;
     const i = cond.indexOf('.'), op = cond.slice(0, i), v = cond.slice(i + 1), x = valor(fila, col);
     if (op === 'eq') return String(x) === v;
     if (op === 'neq') return String(x) !== v;
@@ -33,6 +33,7 @@ function crear(inicial = {}, claves = {}) {
     const devolver = datos => ({ ok: true, status: 200, text: async () => JSON.stringify(datos) });
     if (metodo === 'GET') {
       let r = ordenar(filas.filter(f => cumple(f, params)), params.order);
+      if (params.offset) r = r.slice(Number(params.offset));
       if (params.limit) r = r.slice(0, Number(params.limit));
       return devolver(r);
     }
