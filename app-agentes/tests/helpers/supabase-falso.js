@@ -27,7 +27,7 @@ function crear(inicial = {}, claves = {}) {
   const fetchFalso = async (url, o = {}) => {
     const u = new URL(url), metodo = o.method || 'GET', tabla = u.pathname.split('/').pop();
     const params = Object.fromEntries(u.searchParams), prefer = (o.headers || {}).Prefer || '';
-    llamadas.push({ metodo, tabla, params, cuerpo: o.body ? JSON.parse(o.body) : null, url: String(url) });
+    llamadas.push({ metodo, tabla, params, cuerpo: o.body ? JSON.parse(o.body) : null, url: String(url), prefer });
     if (caido) return { ok: false, status: 500, text: async () => 'caído' };
     const filas = tablas[tabla] = tablas[tabla] || [];
     const devolver = datos => ({ ok: true, status: 200, text: async () => JSON.stringify(datos) });
