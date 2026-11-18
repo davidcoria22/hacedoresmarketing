@@ -72,3 +72,14 @@ test('usa() exige la variable del módulo y las llaves', () => {
   assert.strictEqual(db.configurado(), false);
   assert.strictEqual(db.usa('mensajes'), false);
 });
+
+test('con una llave nueva (sb_secret_...) solo se manda apikey; con la llave JWT antigua se mandan las dos', async () => {
+  process.env.SUPABASE_SERVICE_KEY = 'sb_secret_abc123';
+  await db.select('mensajes');
+  assert.strictEqual(llamadas[0].cab.apikey, 'sb_secret_abc123');
+  assert.strictEqual(llamadas[0].cab.Authorization, undefined);
+  process.env.SUPABASE_SERVICE_KEY = 'eyJhbGciOi.JWT.firma';
+  await db.select('mensajes');
+  assert.strictEqual(llamadas[1].cab.apikey, 'eyJhbGciOi.JWT.firma');
+  assert.strictEqual(llamadas[1].cab.Authorization, 'Bearer eyJhbGciOi.JWT.firma');
+});

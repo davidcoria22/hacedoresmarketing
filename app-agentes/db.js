@@ -7,7 +7,8 @@ async function pedir(metodo, tabla, params, cuerpo, prefer) {
   const base = String(process.env.SUPABASE_URL).replace(/\/+$/, '');
   const q = new URLSearchParams(params || {}).toString();
   const llave = process.env.SUPABASE_SERVICE_KEY;
-  const cab = { apikey: llave, Authorization: 'Bearer ' + llave };
+  const cab = { apikey: llave };
+  if (llave.startsWith('eyJ')) cab.Authorization = 'Bearer ' + llave;   // las llaves nuevas (sb_secret_...) van solo en apikey; las antiguas (JWT) van en las dos
   if (cuerpo !== undefined) cab['Content-Type'] = 'application/json';
   if (prefer) cab.Prefer = prefer;
   const r = await fetch(base + '/rest/v1/' + tabla + (q ? '?' + q : ''), {
