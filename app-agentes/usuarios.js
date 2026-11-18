@@ -26,6 +26,7 @@ const ROLES_BASE = [
 ];
 
 const ayudas = () => require('./server.js').ayudas;
+const db = require('./db.js');
 const lista = t => String(t || '').split(/[,;\s]+/).map(x => x.trim().toLowerCase()).filter(Boolean);
 const cab = token => ({ Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' });
 const base = h => 'https://sheets.googleapis.com/v4/spreadsheets/' + h.SHEET_ID;
@@ -48,7 +49,19 @@ async function leerFilas(h, token, nombre) {
   if (r.status !== 200) throw new Error('Google Sheets respondió ' + r.status);
   return JSON.parse(r.body).values || [];
 }
+// En Supabase no hay credenciales de Google que pedir: [h, token] van vacíos.
+async function credencialesHoja() {
+  if (db.usa('usuarios')) return [null, null];
+  const h = ayudas();
+  return [h, await h.tokenGoogle('spreadsheets')];
+}
 async function escribirFila(h, token, nombre, clave, fila) {
+  if (db.usa('usuarios')) {   // la fila llega en el orden de las columnas de la hoja
+    if (nombre === 'Usuarios') await db.upsert('usuarios', [{ email: fila[0], nombre: fila[1], rol: fila[2], activo: fila[3] !== 'NO', creado: fila[4] || null, por: fila[5] }], 'email');
+    else await db.upsert('roles', [{ nombre: fila[0], permisos: String(fila[1] || '').split(',').filter(Boolean), descripcion: fila[2], actualizado: fila[3] }], 'nombre');
+    cache = { t: 0, v: cache.v };
+    return;
+  }
   let filas = await leerFilas(h, token, nombre);
   if (filas === null) { await crearPestana(h, token, nombre); filas = []; }
   const i = filas.findIndex(f => String(f[0] || '').toLowerCase() === String(clave).toLowerCase());
@@ -60,6 +73,11 @@ async function escribirFila(h, token, nombre, clave, fila) {
   cache = { t: 0, v: cache.v };
 }
 async function borrarFila(h, token, nombre, clave) {
+  if (db.usa('usuarios')) {
+    await db.remove(nombre === 'Usuarios' ? 'usuarios' : 'roles', { [nombre === 'Usuarios' ? 'email' : 'nombre']: 'eq.' + clave });
+    cache = { t: 0, v: cache.v };
+    return;
+  }
   const filas = await leerFilas(h, token, nombre);
   const i = (filas || []).findIndex(f => String(f[0] || '').toLowerCase() === String(clave).toLowerCase());
   if (i < 0) return;
@@ -74,8 +92,15 @@ let cache = { t: 0, v: null };   // se guarda 15 s; si la hoja falla se sigue co
 async function cargar() {
   if (cache.v && Date.now() - cache.t < 15000) return cache.v;
   try {
-    const h = ayudas(), token = await h.tokenGoogle('spreadsheets.readonly');
-    const [fu, fr] = await Promise.all([leerFilas(h, token, 'Usuarios'), leerFilas(h, token, 'Roles')]);
+    let fu, fr;
+    if (db.usa('usuarios')) {   // se convierten a las mismas filas de la hoja para no tocar la lógica de abajo
+      const [tu, tr] = await Promise.all([db.select('usuarios'), db.select('roles')]);
+      fu = tu.map(u => [u.email, u.nombre, u.rol, u.activo ? 'SI' : 'NO', u.creado || '', u.por]);
+      fr = tr.map(r => [r.nombre, (r.permisos || []).join(','), r.descripcion, r.actualizado || '']);
+    } else {
+      const h = ayudas(), token = await h.tokenGoogle('spreadsheets.readonly');
+      [fu, fr] = await Promise.all([leerFilas(h, token, 'Usuarios'), leerFilas(h, token, 'Roles')]);
+    }
     const usuarios = (fu || []).filter(f => f[0]).map(f => ({ email: String(f[0]).trim().toLowerCase(), nombre: f[1] || '', rol: f[2] || '', activo: String(f[3] || 'SI').toUpperCase() !== 'NO', creado: f[4] || '', por: f[5] || '' }));
     const roles = ROLES_BASE.map(r => ({ ...r }));
     for (const f of fr || []) {
@@ -140,7 +165,7 @@ async function guardarUsuario(d, quien) {
   const previo = usuarios.find(u => u.email === email);
   const nombre = String(d.nombre ?? (previo && previo.nombre) ?? '').trim().slice(0, 60);
   const activo = d.activo === false || d.activo === 'NO' ? 'NO' : 'SI';
-  const h = ayudas(), token = await h.tokenGoogle('spreadsheets');
+  const [h, token] = await credencialesHoja();
   await escribirFila(h, token, 'Usuarios', email, [email, nombre, rol.nombre, activo, (previo && previo.creado) || new Date().toISOString(), (previo && previo.por) || String(quien || '').slice(0, 80)]);
   return { ok: true };
 }
@@ -148,7 +173,7 @@ async function quitarUsuario(email, quien) {
   email = String(email || '').trim().toLowerCase();
   if (email === String(quien || '').toLowerCase()) return { ok: false, error: 'No puedes quitarte a ti mismo.' };
   if (lista(process.env.AUTH_EMAILS).includes(email)) return { ok: false, error: 'Esa cuenta viene de Vercel y no se quita desde aquí. Puedes cambiarle el rol o desactivarla.' };
-  const h = ayudas(), token = await h.tokenGoogle('spreadsheets');
+  const [h, token] = await credencialesHoja();
   await borrarFila(h, token, 'Usuarios', email);
   return { ok: true };
 }
@@ -162,7 +187,7 @@ async function guardarRol(d) {
   const previo = roles.find(r => r.nombre.toLowerCase() === nombre.toLowerCase());
   if (!previo && d.nuevo !== true) return { ok: false, error: 'Ese rol no existe.' };
   if (previo && d.nuevo === true) return { ok: false, error: 'Ya hay un rol con ese nombre.' };
-  const h = ayudas(), token = await h.tokenGoogle('spreadsheets');
+  const [h, token] = await credencialesHoja();
   await escribirFila(h, token, 'Roles', previo ? previo.nombre : nombre, [previo ? previo.nombre : nombre, permisos.join(','), String(d.descripcion || '').trim().slice(0, 120), new Date().toISOString()]);
   return { ok: true };
 }
@@ -173,7 +198,7 @@ async function quitarRol(nombre) {
   if (!r) return { ok: true };
   if (r.fijo) return { ok: false, error: 'El rol Administrador no se puede quitar.' };
   if (usuarios.some(u => u.rol.toLowerCase() === r.nombre.toLowerCase())) return { ok: false, error: 'Hay personas con este rol. Cámbialas a otro rol primero.' };
-  const h = ayudas(), token = await h.tokenGoogle('spreadsheets');
+  const [h, token] = await credencialesHoja();
   if (ROLES_BASE.some(b => b.nombre.toLowerCase() === r.nombre.toLowerCase())) {   // un rol de fábrica "se restaura" quitando su cambio
     await borrarFila(h, token, 'Roles', r.nombre);
     return { ok: true, nota: 'Los roles de fábrica no se eliminan: vuelve a su configuración original.' };
