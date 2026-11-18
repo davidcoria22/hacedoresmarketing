@@ -2,8 +2,14 @@
 // En línea (Vercel) el disco es de solo lectura, así que ahí los cambios viven en la hoja.
 const PESTANA = 'Ajustes';
 const ayudas = () => require('./server.js').ayudas;
+const db = require('./db.js');
 
 async function leerTodos() {
+  if (db.usa('ajustes')) {
+    const todos = {};
+    for (const f of await db.select('ajustes')) todos[f.agente] = f.valores || {};
+    return todos;
+  }
   const h = ayudas();
   const token = await h.tokenGoogle('spreadsheets.readonly');
   const r = await h.petición('GET', 'https://sheets.googleapis.com/v4/spreadsheets/' + h.SHEET_ID + '/values/' + encodeURIComponent(PESTANA + '!A2:B200'), null, { Authorization: 'Bearer ' + token });
@@ -15,6 +21,7 @@ async function leerTodos() {
 }
 
 async function guardar(id, valores) {
+  if (db.usa('ajustes')) { await db.upsert('ajustes', [{ agente: id, valores, actualizado: new Date().toISOString() }], 'agente'); return; }
   const h = ayudas();
   const token = await h.tokenGoogle('spreadsheets');
   const base = 'https://sheets.googleapis.com/v4/spreadsheets/' + h.SHEET_ID;
