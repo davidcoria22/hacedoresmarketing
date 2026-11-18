@@ -66,6 +66,12 @@ create index if not exists mensajes_fecha on mensajes (fecha);
 create index if not exists mensajes_ref on mensajes (ref);
 create index if not exists mensajes_contacto on mensajes (contacto);
 
+-- Permisos: solo la llave del servidor (service_role) puede usar las tablas; la llave pública y los usuarios no.
+revoke all on all tables in schema public from anon, authenticated;
+revoke all on all sequences in schema public from anon, authenticated;
+grant all on all tables in schema public to service_role;
+grant usage, select on all sequences in schema public to service_role;
+
 alter table ajustes enable row level security;
 alter table usuarios enable row level security;
 alter table roles enable row level security;
