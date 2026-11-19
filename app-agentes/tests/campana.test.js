@@ -92,3 +92,48 @@ test('mensajesDelAnuncio cuenta solo lo que llegó del anuncio de Consejo Maker 
   assert.strictEqual(r.hoy, 1);
   assert.ok(!JSON.stringify(r).includes('5215512345678'));
 });
+
+test('campana usa el periodo desde la última vez que se activó, y pide los números solo de ese rango', async () => {
+  let rangoPedido = '';
+  const { C } = cargar({ meta: {
+    '/act_123/campaigns': { data: [{ id: '2', name: 'Viernes de Consejo Maker', effective_status: 'ACTIVE', start_time: '2026-11-01T10:00:00-0600', updated_time: '2026-11-18T10:00:00-0600' }] },
+    '/act_123/activities': { data: [
+      { object_id: '2', event_type: 'update_campaign_run_status', event_time: '2026-11-05T12:00:00+0000', extra_data: '{"new_value":"Active"}' },
+      { object_id: '2', event_type: 'update_campaign_run_status', event_time: '2026-11-08T12:00:00+0000', extra_data: '{"new_value":"Paused"}' },
+      { object_id: '2', event_type: 'update_campaign_run_status', event_time: '2026-11-17T15:00:00+0000', extra_data: '{"new_value":"Active"}' },
+      { object_id: '9', event_type: 'update_campaign_run_status', event_time: '2026-11-18T15:00:00+0000', extra_data: '{"new_value":"Paused"}' },
+    ] },
+    '/2/insights': { data: [{ impressions: '10', reach: '5', actions: [] }] },
+  } });
+  const f = global.fetch; global.fetch = async (u, o) => { if (String(u).includes('/2/insights')) rangoPedido = decodeURIComponent(String(u)); return f(u, o); };
+  const c = await C.campana();
+  assert.strictEqual(c.desde, '2026-11-17T15:00:00.000Z');
+  assert.strictEqual(c.hasta, '');
+  assert.match(rangoPedido, /"since":"2026-11-17"/);
+});
+
+test('si la campaña ya se apagó, el periodo termina cuando se pausó', async () => {
+  const { C } = cargar({ meta: {
+    '/act_123/campaigns': { data: [{ id: '2', name: 'Viernes de Consejo Maker', effective_status: 'PAUSED', start_time: '2026-11-01T10:00:00-0600' }] },
+    '/act_123/activities': { data: [
+      { object_id: '2', event_type: 'update_campaign_run_status', event_time: '2026-11-17T15:00:00+0000', extra_data: '{"new_value":"Active"}' },
+      { object_id: '2', event_type: 'update_campaign_run_status', event_time: '2026-11-19T01:00:00+0000', extra_data: '{"new_value":"Paused"}' },
+    ] },
+  } });
+  const c = await C.campana();
+  assert.strictEqual(c.desde, '2026-11-17T15:00:00.000Z');
+  assert.strictEqual(c.hasta, '2026-11-19T01:00:00.000Z');
+});
+
+test('sin historial de cambios usa la fecha de inicio de la campaña', async () => {
+  const { C } = cargar({ meta: { '/act_123/campaigns': { data: [{ id: '2', name: 'Viernes de Consejo Maker', effective_status: 'ACTIVE', start_time: '2026-11-10T00:00:00+0000' }] } } });
+  const c = await C.campana();
+  assert.strictEqual(c.desde, '2026-11-10T00:00:00.000Z');
+});
+
+test('ventasDe solo cuenta lo comprado dentro del periodo', async () => {
+  const p = (id, gmt) => ({ id, date_created: gmt, date_created_gmt: gmt, total: '0', status: 'processing', line_items: [item('Viernes de Consejo Maker', 490)] });
+  const { W } = cargar({ pedidos: [p(3, '2026-11-18T10:00:00'), p(2, '2026-11-16T10:00:00'), p(1, '2026-11-10T10:00:00')] });
+  const r = await W.ventasDe(/consejo maker/i, 8, { desde: Date.parse('2026-11-15T00:00:00Z'), hasta: Date.parse('2026-11-17T00:00:00Z') });
+  assert.deepStrictEqual(r.ultimas.map(x => x.id), [2]);
+});

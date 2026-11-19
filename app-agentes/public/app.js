@@ -1359,7 +1359,8 @@ function pintarVM() {
   if (vmDatos.error) { cont.innerHTML = '<p class="neu">' + esc(vmDatos.error) + '</p>'; return; }
   const { campana: c, mensajes: m, compras: v } = vmDatos;
   const aviso = x => '<p class="neu vm-aviso">' + esc(x.error) + '</p>';
-  est.textContent = c && c.encontrada ? c.nombre + ' · ' + (c.activa ? 'activa' : c.estado) : 'campaña';
+  const dd = f => new Date(f).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
+  est.textContent = c && c.encontrada ? (c.desde ? (c.hasta ? 'Del ' + dd(c.desde) + ' al ' + dd(c.hasta) : 'Desde el ' + dd(c.desde) + ' · activa') : c.nombre + ' · ' + (c.activa ? 'activa' : c.estado)) : 'campaña';
   let reel;
   if (c && c.reel) reel = '<iframe class="vm-reel" src="' + esc(c.reel.embed) + '" title="Reel que se promociona" loading="lazy" scrolling="no" allowfullscreen referrerpolicy="origin-when-cross-origin"></iframe>' +
     '<a class="vm-enlace" href="' + esc(c.reel.url) + '" target="_blank" rel="noopener">Abrir en ' + (c.reel.red === 'instagram' ? 'Instagram' : 'Facebook') + '</a>';

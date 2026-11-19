@@ -33,10 +33,12 @@ async function pedidosRecientes() {
 
 // Compras de los productos cuyo nombre coincide con `patron` (una por producto y pedido): cuántas, cuánto y las últimas.
 // Cada una trae solo producto, cantidad, monto de ese producto y hora (nada del cliente).
-async function ventasDe(patron, limite = 8) {
+async function ventasDe(patron, limite = 8, periodo = {}) {
   const pedidos = await pedidosRecientes();
   const compras = [];
   for (const p of pedidos) for (const i of p.line_items || []) {
+    const cuando = Date.parse(p.date_created_gmt ? p.date_created_gmt + 'Z' : '');
+    if ((periodo.desde && !(cuando >= periodo.desde)) || (periodo.hasta && !(cuando <= periodo.hasta))) continue;   // solo lo comprado dentro del periodo
     const nombre = String(i.name || '');
     if (!patron.test(nombre)) continue;
     compras.push({ id: p.id, fecha: p.date_created_gmt ? p.date_created_gmt + 'Z' : '', producto: nombre.slice(0, 80), cantidad: Number(i.quantity) || 1, total: Math.round((Number(i.total) || 0) * 100) / 100 });

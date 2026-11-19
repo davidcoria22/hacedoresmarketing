@@ -19,13 +19,32 @@ const embedDe = (igUrl, videoId) => {
   return null;
 };
 
+// Cuándo se activó la campaña por última vez y, si ya se apagó, cuándo. Se lee del historial de cambios de la cuenta
+// (cada vez que se pausa o reactiva); si ese historial no se puede leer se usan las fechas de inicio y fin de la campaña.
+async function periodoDe(M, c) {
+  const activa = c.effective_status === 'ACTIVE';
+  const t = v => { const x = Date.parse(v || ''); return isNaN(x) ? 0 : x; };
+  try {
+    const h = await M.graph('/' + M.cuentaId() + '/activities', { fields: 'event_time,event_type,object_id,extra_data', since: String(Math.floor((t(c.start_time) || Date.now() - 90 * 86400000) / 1000) - 86400), limit: '200' });
+    const cambios = (h.data || []).filter(e => String(e.object_id) === String(c.id) && e.event_type === 'update_campaign_run_status')
+      .map(e => { let nuevo = ''; try { const x = JSON.parse(e.extra_data || '{}'); nuevo = String(x.new_value ?? ''); } catch { /* sin detalle */ } return { t: t(e.event_time), activo: /active/i.test(nuevo) && !/inactive/i.test(nuevo) }; })
+      .filter(e => e.t).sort((a, b) => a.t - b.t);
+    const enciende = cambios.filter(e => e.activo).pop();
+    if (enciende) {
+      const apaga = cambios.find(e => !e.activo && e.t > enciende.t);
+      return { desde: enciende.t, hasta: activa ? null : (apaga ? apaga.t : t(c.updated_time) || null) };
+    }
+  } catch { /* se usan las fechas de la campaña */ }
+  return { desde: t(c.start_time) || 0, hasta: activa ? null : (t(c.stop_time) || t(c.updated_time) || null) };
+}
+
 // La campaña activa (o la más reciente) cuyo nombre trae "Consejo Maker", con su anuncio, el reel y sus números totales
 async function campana() {
   const M = require('./meta-ads.js');
   if (!M.configurado()) throw new Error('Faltan las variables de Meta en Vercel (META_ADS_TOKEN y META_ADS_ACCOUNT_ID).');
   let todas = [], after = '';
   for (let n = 0; n < 5; n++) {   // hasta 500 campañas, por si la cuenta tiene muchas
-    const p = await M.graph('/' + M.cuentaId() + '/campaigns', { fields: 'name,effective_status,start_time', limit: '100', ...(after ? { after } : {}) });
+    const p = await M.graph('/' + M.cuentaId() + '/campaigns', { fields: 'name,effective_status,start_time,stop_time,updated_time', limit: '100', ...(after ? { after } : {}) });
     todas = todas.concat(p.data || []);
     after = p.paging?.cursors?.after;
     if (!p.paging?.next || !after) break;
@@ -33,7 +52,10 @@ async function campana() {
   const hit = todas.filter(c => PATRON_CAMPANA.test(c.name || ''));
   if (!hit.length) return { encontrada: false, activas: todas.filter(c => c.effective_status === 'ACTIVE').map(c => String(c.name || '').slice(0, 60)).slice(0, 8), total: todas.length };
   const c = hit.find(x => x.effective_status === 'ACTIVE') || hit.sort((a, b) => String(b.start_time).localeCompare(String(a.start_time)))[0];
-  const ins = await M.graph('/' + c.id + '/insights', { fields: 'impressions,reach,spend,clicks,actions', date_preset: 'maximum' }).catch(() => ({ data: [] }));
+  const periodo = await periodoDe(M, c);
+  const dia = ms => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date(ms));
+  const rango = periodo.desde ? { time_range: JSON.stringify({ since: dia(periodo.desde), until: dia(periodo.hasta || Date.now()) }) } : { date_preset: 'maximum' };
+  const ins = await M.graph('/' + c.id + '/insights', { fields: 'impressions,reach,spend,clicks,actions', ...rango }).catch(() => ({ data: [] }));
   const i = (ins.data || [])[0] || {};
   const ads = await M.graph('/' + c.id + '/ads', { fields: 'name,effective_status,creative{instagram_permalink_url,thumbnail_url,video_id,object_story_spec}', limit: '10' }).catch(() => ({ data: [] }));
   const lista = ads.data || [];
@@ -41,7 +63,7 @@ async function campana() {
   const cr = ad?.creative || {};
   const video = embedDe(cr.instagram_permalink_url, cr.video_id || cr.object_story_spec?.video_data?.video_id);
   return {
-    encontrada: true, nombre: String(c.name || '').slice(0, 100), activa: c.effective_status === 'ACTIVE', estado: String(c.effective_status || '').toLowerCase(),
+    encontrada: true, desde: periodo.desde ? new Date(periodo.desde).toISOString() : '', hasta: periodo.hasta ? new Date(periodo.hasta).toISOString() : '', nombre: String(c.name || '').slice(0, 100), activa: c.effective_status === 'ACTIVE', estado: String(c.effective_status || '').toLowerCase(),
     reel: video ? { ...video, miniatura: urlSegura(cr.thumbnail_url) || '' } : null,
     visualizaciones: num(i.impressions), alcance: num(i.reach), reproducciones: accion(i.actions, 'video_view'), clics: num(i.clicks),
     mensajes: (i.actions || []).filter(a => /messaging_conversation_started/.test(a.action_type)).reduce((s, a) => s + num(a.value), 0),
@@ -50,9 +72,9 @@ async function campana() {
 }
 
 // Mensajes de WhatsApp que llegaron desde este anuncio (solo nombre, teléfono ya enmascarado y texto)
-async function mensajesDelAnuncio() {
+async function mensajesDelAnuncio(periodo = {}) {
   const todos = await require('./mensajes.js').leerMensajes(800, 'whatsapp', false);
-  const suyos = todos.filter(m => m.origen === ID_ANUNCIO);
+  const suyos = todos.filter(m => m.origen === ID_ANUNCIO && (!periodo.desde || Date.parse(m.fecha) >= periodo.desde) && (!periodo.hasta || Date.parse(m.fecha) <= periodo.hasta));
   const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' });
   const hoyTxt = hoy.format(new Date());
   return {
@@ -64,8 +86,10 @@ async function mensajesDelAnuncio() {
 const quitar = r => (r.status === 'fulfilled' ? r.value : { error: String(r.reason?.message || r.reason).slice(0, 300) });
 async function resumen() {
   const W = require('./woocommerce.js');
-  const [c, m, v] = await Promise.allSettled([campana(), mensajesDelAnuncio(), W.ventasDe(PATRON)]);
-  return { campana: quitar(c), mensajes: quitar(m), compras: quitar(v), actualizado: new Date().toISOString() };
+  const [c] = await Promise.allSettled([campana()]);
+  const k = quitar(c), periodo = k.desde ? { desde: Date.parse(k.desde), hasta: k.hasta ? Date.parse(k.hasta) : 0 } : {};   // mensajes y compras solo del tiempo que estuvo activa
+  const [m, v] = await Promise.allSettled([mensajesDelAnuncio(periodo), W.ventasDe(PATRON, 8, periodo)]);
+  return { campana: k, mensajes: quitar(m), compras: quitar(v), actualizado: new Date().toISOString() };
 }
 
 module.exports = { resumen, campana, mensajesDelAnuncio, embedDe, ID_ANUNCIO };
