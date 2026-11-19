@@ -44,7 +44,9 @@ async function ventasDe(patron, limite = 8, periodo = {}) {
     compras.push({ id: p.id, fecha: p.date_created_gmt ? p.date_created_gmt + 'Z' : '', producto: nombre.slice(0, 80), cantidad: Number(i.quantity) || 1, total: Math.round((Number(i.total) || 0) * 100) / 100 });
   }
   compras.sort((a, b) => b.id - a.id);
-  return { cantidad: compras.reduce((s, c) => s + c.cantidad, 0), total: Math.round(compras.reduce((s, c) => s + c.total, 0) * 100) / 100, ultimas: compras.slice(0, limite) };
+  const porProducto = {};
+  for (const c of compras) porProducto[c.producto] = (porProducto[c.producto] || 0) + c.cantidad;
+  return { porProducto, cantidad: compras.reduce((s, c) => s + c.cantidad, 0), total: Math.round(compras.reduce((s, c) => s + c.total, 0) * 100) / 100, ultimas: compras.slice(0, limite) };
 }
 
 let cache = { t: 0, v: null };

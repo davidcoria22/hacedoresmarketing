@@ -137,3 +137,14 @@ test('ventasDe solo cuenta lo comprado dentro del periodo', async () => {
   const r = await W.ventasDe(/consejo maker/i, 8, { desde: Date.parse('2026-11-15T00:00:00Z'), hasta: Date.parse('2026-11-17T00:00:00Z') });
   assert.deepStrictEqual(r.ultimas.map(x => x.id), [2]);
 });
+
+test('resumen separa los lugares vendidos de Interlomas y de Chapultepec', async () => {
+  const { C } = cargar({ pedidos: [
+    pedido(3, [item('Viernes de Consejo Maker – Hacedores Interlomas 27 de noviembre', 980, 2)]),
+    pedido(2, [item('Viernes de Consejo Maker', 490)]),
+    pedido(1, [item('Viernes de Consejo Maker', 490)]),
+  ] });
+  const r = await C.resumen();
+  assert.strictEqual(r.compras.interlomas, 2);
+  assert.strictEqual(r.compras.chapultepec, 2);
+});

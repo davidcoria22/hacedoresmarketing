@@ -89,7 +89,13 @@ async function resumen() {
   const [c] = await Promise.allSettled([campana()]);
   const k = quitar(c), periodo = k.desde ? { desde: Date.parse(k.desde), hasta: k.hasta ? Date.parse(k.hasta) : 0 } : {};   // mensajes y compras solo del tiempo que estuvo activa
   const [m, v] = await Promise.allSettled([mensajesDelAnuncio(periodo), W.ventasDe(PATRON, 8, periodo)]);
-  return { campana: k, mensajes: quitar(m), compras: quitar(v), actualizado: new Date().toISOString() };
+  const compras = quitar(v);
+  if (!compras.error) {   // cantidad de lugares por sede: Interlomas tiene su producto; el otro es Chapultepec
+    const sede = re => Object.entries(compras.porProducto || {}).filter(([n]) => re.test(n)).reduce((s, [, q]) => s + q, 0);
+    compras.interlomas = sede(/interlomas/i);
+    compras.chapultepec = compras.cantidad - compras.interlomas;
+  }
+  return { campana: k, mensajes: quitar(m), compras, actualizado: new Date().toISOString() };
 }
 
 module.exports = { resumen, campana, mensajesDelAnuncio, embedDe, ID_ANUNCIO };

@@ -586,3 +586,12 @@ body[data-vista="mensajes"] .msg-app { height: calc(100vh - 28px); min-height: 4
 .rejilla.redes-vm .tarjeta.vm-ancha { grid-column: 2 / -1; }
 .vm-reel { height: 560px; }
 @media (max-width: 900px) { .rejilla.redes-vm .tarjeta.ancha, .rejilla.redes-vm .tarjeta.vm-ancha { grid-column: auto; } }
+
+/* Redes: el video a la izquierda y, a su lado, los números de la campaña; la gráfica y las redes debajo */
+.rejilla.redes-vm .vm-card-reel { grid-column: 1; grid-row: 1; }
+.rejilla.redes-vm .tarjeta.vm-ancha { grid-column: 2 / -1; grid-row: 1; }
+.rejilla.redes-vm .tarjeta.vm-ancha h4 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
+.vm-datos { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 18px; }
+.vm-dato b { font-size: 34px; }
+.vm-dato small { font-size: 12px; color: #7a766d; }
+@media (max-width: 900px) { .rejilla.redes-vm .vm-card-reel, .rejilla.redes-vm .tarjeta.vm-ancha { grid-column: auto; grid-row: auto; } }
