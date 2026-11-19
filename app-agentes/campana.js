@@ -3,6 +3,7 @@
 // Cada parte se pide por separado: si una falla, las otras se siguen viendo.
 const ID_ANUNCIO = 'anuncio:viernes-de-consejo-maker';   // así marca whatsapp.js los mensajes de ese anuncio (origen)
 const PATRON = /consejo maker/i;                       // productos de la tienda
+const COMPRAS_DESDE = Date.parse('2026-11-13T00:00:00-06:00');   // las compras se cuentan desde el 13 de noviembre (hora de México)
 const PATRON_CAMPANA = /consejo\s*maker|viernes/i;     // nombre de la campaña en Meta
 
 const num = v => Number(v) || 0;
@@ -88,7 +89,7 @@ async function resumen() {
   const W = require('./woocommerce.js');
   const [c] = await Promise.allSettled([campana()]);
   const k = quitar(c), periodo = k.desde ? { desde: Date.parse(k.desde), hasta: k.hasta ? Date.parse(k.hasta) : 0 } : {};   // mensajes y compras solo del tiempo que estuvo activa
-  const [m, v] = await Promise.allSettled([mensajesDelAnuncio(periodo), W.ventasDe(PATRON, 8, periodo)]);
+  const [m, v] = await Promise.allSettled([mensajesDelAnuncio(periodo), W.ventasDe(PATRON, 8, { desde: COMPRAS_DESDE })]);
   const compras = quitar(v);
   if (!compras.error) {   // cantidad de lugares por sede: Interlomas tiene su producto; el otro es Chapultepec
     const sede = re => Object.entries(compras.porProducto || {}).filter(([n]) => re.test(n)).reduce((s, [, q]) => s + q, 0);

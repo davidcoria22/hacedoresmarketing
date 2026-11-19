@@ -1378,7 +1378,7 @@ function pintarVM() {
   const abajo = !v ? '' : v.error ? aviso(v) : dato(v.chapultepec, 'Viernes de Consejo Maker Chapultepec') + dato(v.interlomas, 'Viernes de Consejo Maker Interlomas');
   const cr = $('#vm-reel'), clave = c && c.reel ? c.reel.embed : (c ? 'sin-reel' : '');
   if (cr && cr.dataset.reel !== clave) { cr.dataset.reel = clave; cr.innerHTML = reel; }   // el reel solo se vuelve a cargar si cambia, para que no se reinicie cada minuto
-  cont.innerHTML = '<h4>Campaña en Meta</h4><div class="vm-datos">' + arriba + '</div><h4>Compras en WooCommerce</h4><div class="vm-datos">' + abajo + '</div>';
+  cont.innerHTML = '<h4>Campaña en Meta</h4><div class="vm-datos">' + arriba + '</div><h4>Compras en WooCommerce · desde el 13 nov</h4><div class="vm-datos">' + abajo + '</div>';
 
 }
 async function cargarVM() {

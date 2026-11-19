@@ -138,6 +138,13 @@ test('ventasDe solo cuenta lo comprado dentro del periodo', async () => {
   assert.deepStrictEqual(r.ultimas.map(x => x.id), [2]);
 });
 
+test('las compras se cuentan desde el 13 de noviembre, sin importar cuándo se activó la campaña', async () => {
+  const p = (id, gmt) => ({ id, date_created: gmt, date_created_gmt: gmt, total: '0', status: 'processing', line_items: [item('Viernes de Consejo Maker', 490)] });
+  const { C } = cargar({ pedidos: [p(3, '2026-11-13T07:00:00'), p(2, '2026-11-13T05:00:00'), p(1, '2026-11-10T10:00:00')] });
+  const r = await C.resumen();
+  assert.strictEqual(r.compras.cantidad, 1);   // 13 nov 00:00 en México = 06:00 GMT: solo cuenta la de las 07:00
+});
+
 test('resumen separa los lugares vendidos de Interlomas y de Chapultepec', async () => {
   const { C } = cargar({ pedidos: [
     pedido(3, [item('Viernes de Consejo Maker – Hacedores Interlomas 27 de noviembre', 980, 2)]),
