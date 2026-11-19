@@ -1349,3 +1349,40 @@ try { const v = localStorage.getItem('vista'); if (v && document.getElementById(
 
 cargar();
 setInterval(cargar, 5 * 60 * 1000);
+
+// ---------- Redes: campaña Viernes de Consejo Maker (reel, visualizaciones, mensajes del anuncio y compras) ----------
+let vmDatos = null;
+function pintarVM() {
+  const cont = $('#vm'), est = $('#vm-estado');
+  if (!cont) return;
+  if (!vmDatos) { cont.innerHTML = '<p class="neu">Cargando…</p>'; return; }
+  if (vmDatos.error) { cont.innerHTML = '<p class="neu">' + esc(vmDatos.error) + '</p>'; return; }
+  const { campana: c, mensajes: m, compras: v } = vmDatos;
+  const aviso = x => '<p class="neu vm-aviso">' + esc(x.error) + '</p>';
+  est.textContent = c && c.encontrada ? c.nombre + ' · ' + (c.activa ? 'activa' : c.estado) : 'campaña';
+  let reel;
+  if (c && c.reel) reel = '<iframe class="vm-reel" src="' + esc(c.reel.embed) + '" title="Reel que se promociona" loading="lazy" scrolling="no" allowfullscreen referrerpolicy="origin-when-cross-origin"></iframe>' +
+    '<a class="vm-enlace" href="' + esc(c.reel.url) + '" target="_blank" rel="noopener">Abrir en ' + (c.reel.red === 'instagram' ? 'Instagram' : 'Facebook') + '</a>';
+  else reel = '<div class="vm-reel vacio neu">' + (c && c.error ? esc(c.error) : c && !c.encontrada ? 'No hay una campaña de Consejo Maker en Meta.' : 'El anuncio no trae un reel que se pueda mostrar.') + '</div>';
+  const dato = (n, t) => '<div class="vm-dato"><b>' + fmt(n) + '</b><span>' + t + '</span></div>';
+  const nums = c && c.encontrada ? dato(c.visualizaciones, 'visualizaciones') + dato(c.alcance, 'personas alcanzadas') + dato(c.reproducciones, 'reproducciones del video') + dato(c.mensajes, 'conversaciones iniciadas') : '';
+  const msgs = !m ? '' : m.error ? aviso(m) :
+    '<p class="vm-res"><b>' + fmt(m.total) + '</b> en total · <b>' + fmt(m.hoy) + '</b> hoy</p>' +
+    (m.ultimos.length ? m.ultimos.map(x => '<div class="vm-fila"><div><b>' + esc(x.nombre || x.telefono || 'Contacto') + '</b><span class="neu">' + esc(x.texto || '(archivo)') + '</span></div><span class="neu">' + esc(hace(x.fecha)) + '</span></div>').join('') : '<p class="neu">Todavía no llega nadie desde este anuncio.</p>');
+  const compras = !v ? '' : v.error ? aviso(v) :
+    '<p class="vm-res"><b>' + fmt(v.cantidad) + '</b> lugares · <b>' + dinero(v.total) + '</b></p>' +
+    (v.ultimas.length ? v.ultimas.map(x => '<div class="vm-fila"><div><b>' + (x.cantidad > 1 ? x.cantidad + ' × ' : '') + esc(x.producto.replace(/^Viernes de Consejo Maker\s*[-–—]?\s*/i, '') || x.producto) + '</b><span class="neu">' + dinero(x.total) + '</span></div><span class="neu">' + esc(hace(x.fecha)) + '</span></div>').join('') : '<p class="neu">Todavía no hay compras.</p>');
+  const cr = $('#vm-reel'), clave = c && c.reel ? c.reel.embed : (c ? 'sin-reel' : '');
+  if (cr && cr.dataset.reel !== clave) { cr.dataset.reel = clave; cr.innerHTML = reel; }   // el reel solo se vuelve a cargar si cambia, para que no se reinicie cada minuto
+  cont.innerHTML = '<div class="vm-datos">' + nums + '</div>' +
+    '<div class="vm-cols"><div><h4>Mensajes del anuncio</h4>' + msgs + '</div><div><h4>Compras (WooCommerce)</h4>' + compras + '</div></div>';
+}
+async function cargarVM() {
+  try {
+    const r = await fetch('/api/viernes-maker'), j = await r.json().catch(() => ({}));
+    vmDatos = r.ok ? j : { error: j.error || 'No se pudo leer la campaña.' };
+  } catch { vmDatos = { error: 'No se pudo leer la campaña.' }; }
+  pintarVM();
+}
+cargarVM();
+setInterval(() => { if (!document.hidden && document.body.dataset.vista === 'redes') cargarVM(); }, 60 * 1000);

@@ -501,6 +501,12 @@ const manejar = async (req, res) => {
       } catch (e) { return enviarJSON(res, 502, { error: 'No se pudo completar: ' + e.message }); }
     }
     const usaIA = !MODO_PUBLICO && !!process.env.ANTHROPIC_API_KEY;   // en línea nunca se gasta la clave de IA
+    if (req.method === 'GET' && url.pathname === '/api/viernes-maker') {   // campaña Viernes de Consejo Maker: reel, visualizaciones, mensajes y compras
+      if (!puede('ver_redes')) return niega();
+      if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra con tu cuenta.' });
+      try { return enviarJSON(res, 200, await require('./campana.js').resumen()); }
+      catch (e) { return enviarJSON(res, 502, { error: e.message }); }
+    }
     if (req.method === 'GET' && url.pathname === '/api/ventas') {   // ventas de WooCommerce (hoy, mes y las últimas)
       if (!puede('ver_agentes', 'ver_inicio')) return niega();
       if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra con tu cuenta.' });

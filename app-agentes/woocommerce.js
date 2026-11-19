@@ -15,13 +15,11 @@ async function pagina(n, desde) {
   return r.json();
 }
 
-let cache = { t: 0, v: null };
-// Resumen de ventas (se guarda 45 s para no cargar la tienda con cada consulta del panel)
-async function resumen() {
+let cachePedidos = { t: 0, v: null };
+// Pedidos pagados de los últimos 36 días (se guardan 45 s para no cargar la tienda con cada consulta del panel)
+async function pedidosRecientes() {
   if (!configurado()) throw new Error('Falta conectar WooCommerce: crea las claves de la API REST y ponlas en las variables WOO_CONSUMER_KEY y WOO_CONSUMER_SECRET.');
-  if (cache.v && Date.now() - cache.t < 45000) return cache.v;
-  const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());   // aaaa-mm-dd en México
-  const mes = hoy.slice(0, 7);
+  if (cachePedidos.v && Date.now() - cachePedidos.t < 45000) return cachePedidos.v;
   const desde = new Date(Date.now() - 36 * 86400000).toISOString();   // alcanza para todo el mes en curso
   let pedidos = [];
   for (let n = 1; n <= 6; n++) {
@@ -29,6 +27,31 @@ async function resumen() {
     pedidos = pedidos.concat(lote);
     if (lote.length < 100) break;
   }
+  cachePedidos = { t: Date.now(), v: pedidos };
+  return pedidos;
+}
+
+// Compras de los productos cuyo nombre coincide con `patron` (una por producto y pedido): cuántas, cuánto y las últimas.
+// Cada una trae solo producto, cantidad, monto de ese producto y hora (nada del cliente).
+async function ventasDe(patron, limite = 8) {
+  const pedidos = await pedidosRecientes();
+  const compras = [];
+  for (const p of pedidos) for (const i of p.line_items || []) {
+    const nombre = String(i.name || '');
+    if (!patron.test(nombre)) continue;
+    compras.push({ id: p.id, fecha: p.date_created_gmt ? p.date_created_gmt + 'Z' : '', producto: nombre.slice(0, 80), cantidad: Number(i.quantity) || 1, total: Math.round((Number(i.total) || 0) * 100) / 100 });
+  }
+  compras.sort((a, b) => b.id - a.id);
+  return { cantidad: compras.reduce((s, c) => s + c.cantidad, 0), total: Math.round(compras.reduce((s, c) => s + c.total, 0) * 100) / 100, ultimas: compras.slice(0, limite) };
+}
+
+let cache = { t: 0, v: null };
+// Resumen de ventas
+async function resumen() {
+  if (cache.v && Date.now() - cache.t < 45000) return cache.v;
+  const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());   // aaaa-mm-dd en México
+  const mes = hoy.slice(0, 7);
+  const pedidos = await pedidosRecientes();
   const suma = lista => ({ n: lista.length, total: Math.round(lista.reduce((s, p) => s + (Number(p.total) || 0), 0) * 100) / 100 });
   const delMes = pedidos.filter(p => String(p.date_created || '').slice(0, 7) === mes);   // date_created viene en la hora de la tienda
   const deHoy = delMes.filter(p => String(p.date_created).slice(0, 10) === hoy);
@@ -41,4 +64,4 @@ async function resumen() {
   return cache.v;
 }
 
-module.exports = { resumen, configurado };
+module.exports = { resumen, ventasDe, configurado };
