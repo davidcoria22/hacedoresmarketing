@@ -64,7 +64,7 @@ test('campana elige la de Consejo Maker, con su reel y sus visualizaciones', asy
 
 test('si no hay campaña de Consejo Maker lo dice sin fallar', async () => {
   const { C } = cargar({ meta: { '/act_123/campaigns': { data: [{ id: '1', name: 'Curso 3D', effective_status: 'ACTIVE' }] } } });
-  assert.deepStrictEqual(await C.campana(), { encontrada: false });
+  assert.deepStrictEqual(await C.campana(), { encontrada: false, activas: ['Curso 3D'], total: 1 });
 });
 
 test('resumen: si WooCommerce falla, la campaña y los mensajes se siguen mostrando', async () => {

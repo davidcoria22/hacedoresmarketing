@@ -2,7 +2,8 @@
 // el reel que se promociona y sus visualizaciones (Meta), los mensajes que llegan del anuncio (WhatsApp) y las compras (WooCommerce).
 // Cada parte se pide por separado: si una falla, las otras se siguen viendo.
 const ID_ANUNCIO = 'anuncio:viernes-de-consejo-maker';   // así marca whatsapp.js los mensajes de ese anuncio (origen)
-const PATRON = /consejo maker/i;
+const PATRON = /consejo maker/i;                       // productos de la tienda
+const PATRON_CAMPANA = /consejo\s*maker|viernes/i;     // nombre de la campaña en Meta
 
 const num = v => Number(v) || 0;
 const accion = (acciones, tipo) => (acciones || []).filter(a => a.action_type === tipo).reduce((s, a) => s + num(a.value), 0);
@@ -22,9 +23,15 @@ const embedDe = (igUrl, videoId) => {
 async function campana() {
   const M = require('./meta-ads.js');
   if (!M.configurado()) throw new Error('Faltan las variables de Meta en Vercel (META_ADS_TOKEN y META_ADS_ACCOUNT_ID).');
-  const cs = await M.graph('/' + M.cuentaId() + '/campaigns', { fields: 'name,effective_status,start_time', limit: '100' });
-  const hit = (cs.data || []).filter(c => PATRON.test(c.name || ''));
-  if (!hit.length) return { encontrada: false };
+  let todas = [], after = '';
+  for (let n = 0; n < 5; n++) {   // hasta 500 campañas, por si la cuenta tiene muchas
+    const p = await M.graph('/' + M.cuentaId() + '/campaigns', { fields: 'name,effective_status,start_time', limit: '100', ...(after ? { after } : {}) });
+    todas = todas.concat(p.data || []);
+    after = p.paging?.cursors?.after;
+    if (!p.paging?.next || !after) break;
+  }
+  const hit = todas.filter(c => PATRON_CAMPANA.test(c.name || ''));
+  if (!hit.length) return { encontrada: false, activas: todas.filter(c => c.effective_status === 'ACTIVE').map(c => String(c.name || '').slice(0, 60)).slice(0, 8), total: todas.length };
   const c = hit.find(x => x.effective_status === 'ACTIVE') || hit.sort((a, b) => String(b.start_time).localeCompare(String(a.start_time)))[0];
   const ins = await M.graph('/' + c.id + '/insights', { fields: 'impressions,reach,spend,clicks,actions', date_preset: 'maximum' }).catch(() => ({ data: [] }));
   const i = (ins.data || [])[0] || {};
