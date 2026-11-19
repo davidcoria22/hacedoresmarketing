@@ -109,7 +109,18 @@ test('campana usa el periodo desde la última vez que se activó, y pide los nú
   const c = await C.campana();
   assert.strictEqual(c.desde, '2026-11-17T15:00:00.000Z');
   assert.strictEqual(c.hasta, '');
-  assert.match(rangoPedido, /"since":"2026-11-17"/);
+  const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
+  assert.ok(rangoPedido.includes('"since":"' + hoy + '","until":"' + hoy + '"'), rangoPedido);   // visualizaciones y mensajes iniciados: solo de hoy
+});
+
+test('resumen pide los mensajes de WhatsApp solo de hoy', async () => {
+  const hoy = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date());
+  const inicioHoy = Date.parse(hoy + 'T00:00:00-06:00');
+  const { C } = cargar({ meta: { '/act_123/campaigns': { data: [{ id: '2', name: 'Viernes de Consejo Maker', effective_status: 'ACTIVE', start_time: '2026-11-01T10:00:00-0600' }] } } });
+  const r = await C.resumen();
+  assert.ok(r.campana.encontrada);
+  assert.ok(r.mensajes.error || r.mensajes.total >= 0);
+  assert.strictEqual(C.inicioDeHoy(), inicioHoy);
 });
 
 test('si la campaña ya se apagó, el periodo termina cuando se pausó', async () => {

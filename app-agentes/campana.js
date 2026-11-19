@@ -6,6 +6,10 @@ const PATRON = /consejo maker/i;                       // productos de la tienda
 const COMPRAS_DESDE = Date.parse('2026-11-13T00:00:00-06:00');   // las compras se cuentan desde el 13 de noviembre (hora de México)
 const PATRON_CAMPANA = /consejo\s*maker|viernes/i;     // nombre de la campaña en Meta
 
+const diaMX = ms => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date(ms));
+// Las visualizaciones y los mensajes se muestran solo de hoy (hora de México)
+const inicioDeHoy = () => Date.parse(diaMX(Date.now()) + 'T00:00:00-06:00');
+
 const num = v => Number(v) || 0;
 const accion = (acciones, tipo) => (acciones || []).filter(a => a.action_type === tipo).reduce((s, a) => s + num(a.value), 0);
 // Solo se incrustan páginas de Instagram o Facebook
@@ -54,8 +58,7 @@ async function campana() {
   if (!hit.length) return { encontrada: false, activas: todas.filter(c => c.effective_status === 'ACTIVE').map(c => String(c.name || '').slice(0, 60)).slice(0, 8), total: todas.length };
   const c = hit.find(x => x.effective_status === 'ACTIVE') || hit.sort((a, b) => String(b.start_time).localeCompare(String(a.start_time)))[0];
   const periodo = await periodoDe(M, c);
-  const dia = ms => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Mexico_City' }).format(new Date(ms));
-  const rango = periodo.desde ? { time_range: JSON.stringify({ since: dia(periodo.desde), until: dia(periodo.hasta || Date.now()) }) } : { date_preset: 'maximum' };
+  const rango = { time_range: JSON.stringify({ since: diaMX(Date.now()), until: diaMX(Date.now()) }) };
   const ins = await M.graph('/' + c.id + '/insights', { fields: 'impressions,reach,spend,clicks,actions', ...rango }).catch(() => ({ data: [] }));
   const i = (ins.data || [])[0] || {};
   const ads = await M.graph('/' + c.id + '/ads', { fields: 'name,effective_status,creative{instagram_permalink_url,thumbnail_url,video_id,object_story_spec}', limit: '10' }).catch(() => ({ data: [] }));
@@ -88,7 +91,7 @@ const quitar = r => (r.status === 'fulfilled' ? r.value : { error: String(r.reas
 async function resumen() {
   const W = require('./woocommerce.js');
   const [c] = await Promise.allSettled([campana()]);
-  const k = quitar(c), periodo = k.desde ? { desde: Date.parse(k.desde), hasta: k.hasta ? Date.parse(k.hasta) : 0 } : {};   // mensajes y compras solo del tiempo que estuvo activa
+  const k = quitar(c), periodo = { desde: Math.max(inicioDeHoy(), k.desde ? Date.parse(k.desde) : 0), hasta: k.hasta ? Date.parse(k.hasta) : 0 };   // mensajes solo de hoy (y solo mientras estuvo activa)
   const [m, v] = await Promise.allSettled([mensajesDelAnuncio(periodo), W.ventasDe(PATRON, 8, { desde: COMPRAS_DESDE })]);
   const compras = quitar(v);
   if (!compras.error) {   // cantidad de lugares por sede: Interlomas tiene su producto; el otro es Chapultepec
@@ -99,4 +102,4 @@ async function resumen() {
   return { campana: k, mensajes: quitar(m), compras, actualizado: new Date().toISOString() };
 }
 
-module.exports = { resumen, campana, mensajesDelAnuncio, embedDe, ID_ANUNCIO };
+module.exports = { resumen, campana, mensajesDelAnuncio, embedDe, ID_ANUNCIO, inicioDeHoy };

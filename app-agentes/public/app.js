@@ -1396,8 +1396,8 @@ function pintarVM() {
   const pop = (titulo, grande, texto, extra) => '<b class="vm-t">' + titulo + '</b><span class="vm-n">' + grande + '</span><span class="vm-d">' + texto + '</span>' + (extra ? '<span class="vm-x">' + extra + '</span>' : '');
   const sede = (n, nombre) => v && !v.error ? pop('Viernes de Consejo Maker ' + nombre, fmt(n), n === 1 ? 'lugar vendido' : 'lugares vendidos', 'Compras en WooCommerce desde el 13 nov') : falla(v || {});
   vmInfo = {
-    vistas: campanaOk ? pop('Visualizaciones', fmt(c.visualizaciones), 'veces que se mostró el anuncio', fmt(c.alcance) + ' personas alcanzadas · ' + fmt(c.reproducciones) + ' reproducciones' + (periodo ? '<br>' + periodo : '')) : falla(c || {}),
-    mensajes: campanaOk ? pop('Mensajes iniciados', fmt(c.mensajes), 'conversaciones que empezaron desde el anuncio', (m && !m.error ? fmt(m.total) + ' llegaron al panel' : '') + (periodo ? '<br>' + periodo : '')) : falla(c || {}),
+    vistas: campanaOk ? pop('Visualizaciones', fmt(c.visualizaciones), 'veces que se mostró el anuncio hoy', fmt(c.alcance) + ' personas alcanzadas · ' + fmt(c.reproducciones) + ' reproducciones' + (periodo ? '<br>' + periodo : '')) : falla(c || {}),
+    mensajes: campanaOk ? pop('Mensajes iniciados', fmt(c.mensajes), 'conversaciones que empezaron desde el anuncio hoy', (m && !m.error ? fmt(m.total) + ' llegaron hoy al panel' : '') + (periodo ? '<br>' + periodo : '')) : falla(c || {}),
     chapultepec: sede(v && v.chapultepec, 'Chapultepec'),
     interlomas: sede(v && v.interlomas, 'Interlomas'),
   };
