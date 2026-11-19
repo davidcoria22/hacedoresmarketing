@@ -176,6 +176,7 @@ async function manejarWhatsApp(req, res, url) {
     try {
       const r = await require('./pendientes.js').procesar(async (n, tipo, id, anuncio) => {
         const t = await A.textos(anuncio);   // el texto sale según el anuncio del que llegó la persona
+        if (!t) throw new Error('Ese anuncio ya fue eliminado: no se envió nada.');
         const cuerpo = tipo === 'seguimiento' ? t.seguimiento : t.mensaje;
         await enviarTexto(n, cuerpo);
         await anotarSalida(id + ':salida', n, cuerpo);   // queda en el historial de la conversación
@@ -226,15 +227,17 @@ async function manejarWhatsApp(req, res, url) {
       if (delAnuncio && !contestados.has(m.from)) {
         contestados.add(m.from);
         const idAnuncio = anuncio?.id || '';
-        if (!puedeEnviar) respuesta = 'sin credenciales';
+        const textosAnuncio = await A.textos(anuncio?.id || '');   // null = el anuncio fue eliminado: no se contesta ni se programa nada
+        if (!textosAnuncio) respuesta = 'ninguna';
+        else if (!puedeEnviar) respuesta = 'sin credenciales';
         else if (retraso > 0 && process.env.WHATSAPP_CRON_SECRET) { cola.push({ id: m.id, numero: m.from, vence: Date.now() + retraso, tipo: 'primero', anuncio: idAnuncio }); respuesta = 'programada'; }
         else {
-          const texto = (await A.textos(anuncio?.id || '')).mensaje;
+          const texto = textosAnuncio.mensaje;
           try { await enviarTexto(m.from, texto); respuesta = 'enviada'; salidas.push({ id: m.id + ':salida', numero: m.from, texto }); }
           catch (err) { respuesta = 'error'; console.error('whatsapp:', err.message); }
         }
         // seguimiento: solo si hay reloj externo y credenciales; se cancela si la persona vuelve a escribir
-        if (puedeEnviar && process.env.WHATSAPP_CRON_SECRET && horas > 0 && m.id) cola.push({ id: m.id + ':seg', numero: m.from, vence: Date.now() + horas * 3600000, tipo: 'seguimiento', anuncio: idAnuncio });
+        if (textosAnuncio && puedeEnviar && process.env.WHATSAPP_CRON_SECRET && horas > 0 && m.id) cola.push({ id: m.id + ':seg', numero: m.from, vence: Date.now() + horas * 3600000, tipo: 'seguimiento', anuncio: idAnuncio });
       }
       registros.push({
         id: m.id || '', red: 'whatsapp', nombre: nombres[m.from] || '', numero: m.from || '', tipo: m.type || '',

@@ -37,11 +37,19 @@ async function leerFilas(h, token) {
   return JSON.parse(r.body).values || [];
 }
 
+// Los anuncios originales (de los archivos del proyecto) no se pueden borrar del disco: "eliminarlos" los esconde.
+// La lista de los escondidos vive en los ajustes (agente "anuncios-ocultos"), igual que los demás ajustes del panel.
+const AJ_OCULTOS = 'anuncios-ocultos';
+const nube = () => require('./ajustes-nube.js');
+async function leerOcultos() { try { const v = (await nube().leerTodos())[AJ_OCULTOS]; return Array.isArray(v?.ids) ? v.ids.map(String) : []; } catch { return []; } }
+const guardarOcultos = ids => nube().guardar(AJ_OCULTOS, { ids });
+
 let cache = { t: 0, v: null };
 // Lista final: archivos + lo editado en la hoja. Cada elemento: { id, nombre, palabras[], mensaje, seguimiento, original, editado }
 async function listar() {
   if (cache.v && Date.now() - cache.t < 20000) return cache.v;
-  const lista = deArchivos();
+  const ocultos = await leerOcultos();
+  const lista = deArchivos().filter(a => !ocultos.includes(a.id));
   try {
     let filas;
     if (db.usa('anuncios')) {   // misma forma de fila que la hoja: [id, nombre, palabras, mensaje, seguimiento]
@@ -81,7 +89,7 @@ async function elegir(m) {
 async function textos(id) {
   const lista = await listar();
   const a = lista.find(x => x.id === id) || lista.find(x => x.id === 'general');
-  return { mensaje: a.mensaje, seguimiento: a.seguimiento };
+  return a ? { mensaje: a.mensaje, seguimiento: a.seguimiento } : null;   // null = ese anuncio ya no existe: no se contesta
 }
 
 const limpiar = (t, max) => String(t ?? '').replace(/\r\n/g, '\n').trim().slice(0, max);
@@ -104,7 +112,9 @@ async function guardar(entrada) {
   if (!general && !palabras.length) return { ok: false, error: 'Agrega al menos una palabra clave para reconocer el anuncio.' };
   if (palabras.some(p => p.length < 3)) return { ok: false, error: 'Cada palabra clave debe tener al menos 3 letras.' };
   if (!existente && lista.some(a => a.id === id)) return { ok: false, error: 'Ya existe un anuncio con ese nombre.' };
-  const fila = [id, nombre || existente.nombre, general ? '' : palabras.join(', '), mensaje, seguimiento, new Date().toISOString()];
+  const ocultos = await leerOcultos();
+  if (ocultos.includes(id)) await guardarOcultos(ocultos.filter(x => x !== id));   // volver a crear un original eliminado lo vuelve a mostrar
+  const fila = [id, nombre || existente?.nombre, general ? '' : palabras.join(', '), mensaje, seguimiento, new Date().toISOString()];
   if (db.usa('anuncios')) {
     await db.upsert('anuncios', [{ id, nombre: fila[1], palabras: general ? [] : palabras, mensaje, seguimiento, actualizado: fila[5] }], 'id');
     cache = { t: 0, v: null };
@@ -125,15 +135,17 @@ async function guardar(entrada) {
   return { ok: true, id };
 }
 
-// Restaura el original (anuncios de los archivos) o elimina un anuncio creado en el panel
-async function quitar(id) {
+// Elimina un anuncio (los originales se esconden) o, con soloRestaurar, devuelve un original editado a sus textos de los archivos
+async function quitar(id, soloRestaurar = false) {
   id = String(id || '');
   if (!id) return { ok: false, error: 'Falta el anuncio.' };
+  const original = deArchivos().some(a => a.id === id);
+  if (original && !soloRestaurar) { const o = await leerOcultos(); if (!o.includes(id)) await guardarOcultos([...o, id]); }   // un original se esconde; lo editado de ese anuncio se borra abajo
   if (db.usa('anuncios')) { await db.remove('anuncios', { id: 'eq.' + id }); cache = { t: 0, v: null }; return { ok: true }; }
   const h = ayudas(), token = await h.tokenGoogle('spreadsheets');
   const filas = await leerFilas(h, token);
   const i = (filas || []).findIndex(f => String(f[0] || '') === id);
-  if (i < 0) return { ok: true };   // ya estaba en su versión original
+  if (i < 0) { cache = { t: 0, v: null }; return { ok: true }; }   // no tenía nada editado
   const r = await h.petición('PUT', rango(h, 'A' + (i + 2) + ':F' + (i + 2)) + '?valueInputOption=RAW', JSON.stringify({ values: [['', '', '', '', '', '']] }), cabeceras(token));
   if (r.status !== 200) throw new Error('Google Sheets respondió ' + r.status);
   cache = { t: 0, v: null };

@@ -494,7 +494,7 @@ const manejar = async (req, res) => {
         if (req.method === 'POST' || req.method === 'DELETE') {
           if (!puede('anuncios_mensajes')) return niega();
           if (req.headers['x-panel'] !== '1') return enviarJSON(res, 403, { error: 'Solicitud no válida.' });
-          const r = req.method === 'DELETE' ? await An.quitar(url.searchParams.get('id')) : await An.guardar(await leerCuerpo(req));
+          const r = req.method === 'DELETE' ? await An.quitar(url.searchParams.get('id'), url.searchParams.get('restaurar') === '1') : await An.guardar(await leerCuerpo(req));
           return enviarJSON(res, r.ok ? 200 : 400, r.ok ? { ok: true, id: r.id } : { error: r.error });
         }
         return enviarJSON(res, 405, { error: 'Método no permitido' });

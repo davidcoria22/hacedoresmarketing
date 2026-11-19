@@ -68,3 +68,45 @@ test('si Supabase falla, listar usa solo los textos de los archivos y no lanza',
   assert.ok(lista.some(a => a.id === 'general'));
   assert.ok(lista.every(a => a.original));
 });
+
+test.describe('eliminar anuncios originales', () => {
+  const { crear } = require('./helpers/supabase-falso.js');
+  let sb, A;
+  test.beforeEach(() => {
+    process.env.SUPABASE_URL = 'https://abc.supabase.co'; process.env.SUPABASE_SERVICE_KEY = 'k';
+    process.env.DB_ANUNCIOS = 'supabase'; process.env.DB_AJUSTES = 'supabase';
+    sb = crear({ anuncios: [{ id: 'viernes-de-consejo-maker', nombre: 'Viernes', palabras: ['viernes de consejo maker'], mensaje: 'M', seguimiento: 'S' }], ajustes: [] });
+    global.fetch = sb.fetch;
+    const rutaServer = require.resolve('../server.js');
+    require.cache[rutaServer] = { id: rutaServer, filename: rutaServer, loaded: true, exports: { ayudas: {} } };
+    for (const m of ['../db.js', '../ajustes-nube.js', '../anuncios.js']) delete require.cache[require.resolve(m)];
+    A = require('../anuncios.js');
+  });
+
+  test('eliminar un original lo esconde de la lista y el agente ya no usa su texto', async () => {
+    assert.ok((await A.listar()).some(a => a.id === 'general'));
+    assert.deepStrictEqual(await A.quitar('general'), { ok: true });
+    assert.deepStrictEqual(sb.tablas.ajustes.find(f => f.agente === 'anuncios-ocultos').valores, { ids: ['general'] });
+    assert.ok(!(await A.listar()).some(a => a.id === 'general'));
+    assert.strictEqual(await A.textos('general'), null);
+    assert.strictEqual((await A.textos('viernes-de-consejo-maker')).mensaje, 'M');
+  });
+
+  test('si se elimina el general, un anuncio sin coincidencia ya no recibe texto', async () => {
+    await A.quitar('general'); await A.quitar('inventors');
+    assert.strictEqual(await A.textos(''), null);
+    assert.deepStrictEqual((await A.listar()).map(a => a.id), ['viernes-de-consejo-maker']);
+  });
+
+  test('"restaurar" un original editado no lo esconde', async () => {
+    sb.tablas.anuncios.push({ id: 'inventors', nombre: '', palabras: [], mensaje: 'Editado', seguimiento: 'Ed' });
+    await A.quitar('inventors', true);
+    assert.strictEqual(sb.tablas.anuncios.some(f => f.id === 'inventors'), false);
+    assert.ok((await A.listar()).some(a => a.id === 'inventors'));
+  });
+
+  test('eliminar un anuncio propio sigue borrando su fila', async () => {
+    await A.quitar('viernes-de-consejo-maker');
+    assert.strictEqual(sb.tablas.anuncios.length, 0);
+  });
+});

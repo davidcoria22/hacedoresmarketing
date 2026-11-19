@@ -377,7 +377,7 @@ async function abrirAnuncios() {
       <label>Mensaje de respuesta<textarea name="mensaje" rows="6" maxlength="1500">${esc(a.mensaje || '')}</textarea></label>
       <label>Mensaje de seguimiento <small>(si no contesta)</small><textarea name="seguimiento" rows="4" maxlength="1500">${esc(a.seguimiento || '')}</textarea></label>
       <div class="botones-aj"><span class="ok-guardado" data-ok></span><span style="flex:1"></span>
-        ${nuevo ? '<button type="button" class="sec" data-quitar-nuevo>Descartar</button>' : (a.original ? (a.editado ? '<button type="button" class="sec" data-quitar>Restaurar el original</button>' : '') : '<button type="button" class="sec" data-quitar>Eliminar</button>')}
+        ${nuevo ? '<button type="button" class="sec" data-quitar-nuevo>Descartar</button>' : (a.original && a.editado ? '<button type="button" class="sec" data-restaurar>Restaurar el original</button>' : '') + '<button type="button" class="sec peligro" data-quitar>Eliminar</button>'}
         <button type="submit">Guardar</button></div>
     </form>`;
   };
@@ -400,8 +400,14 @@ async function abrirAnuncios() {
     });
     const q = f.querySelector('[data-quitar]');
     if (q) q.addEventListener('click', async () => {
-      if (!confirm(q.textContent.startsWith('Restaurar') ? 'Se vuelve al mensaje original. ¿Seguro?' : 'Se elimina este anuncio. ¿Seguro?')) return;
+      const general = f.dataset.id === 'general';
+      if (!confirm('Se elimina el mensaje de "' + (f.querySelector('.anuncio-cab b').textContent) + '" y el agente dejará de contestar a quien llegue por ese anuncio.' + (general ? ' Este es el mensaje general: quien llegue desde un anuncio sin palabra clave tampoco recibirá respuesta.' : '') + ' ¿Seguro?')) return;
       try { await llamar('DELETE', '/api/anuncios?id=' + encodeURIComponent(f.dataset.id)); await pintar(); } catch (err) { aviso(err.message); }
+    });
+    const rs = f.querySelector('[data-restaurar]');
+    if (rs) rs.addEventListener('click', async () => {
+      if (!confirm('Se vuelve al mensaje original. ¿Seguro?')) return;
+      try { await llamar('DELETE', '/api/anuncios?restaurar=1&id=' + encodeURIComponent(f.dataset.id)); await pintar(); } catch (err) { aviso(err.message); }
     });
     const qn = f.querySelector('[data-quitar-nuevo]'); if (qn) qn.addEventListener('click', () => f.remove());
   });
