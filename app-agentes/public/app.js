@@ -1358,29 +1358,63 @@ setInterval(cargar, 5 * 60 * 1000);
 
 // ---------- Redes: campaña Viernes de Consejo Maker (reel, visualizaciones, mensajes del anuncio y compras) ----------
 let vmDatos = null;
+const VM_ICONOS = {
+  vistas: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  mensajes: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+  chapultepec: '<path d="M3 9a2 2 0 0 0 0 6v3h18v-3a2 2 0 0 1 0-6V6H3z"/><path d="M14 6v12" stroke-dasharray="2 2"/>',
+  interlomas: '<path d="M3 9a2 2 0 0 0 0 6v3h18v-3a2 2 0 0 1 0-6V6H3z"/><path d="M14 6v12" stroke-dasharray="2 2"/>',
+};
+let vmInfo = {};   // lo que muestra la burbuja de cada icono
+let vmAbierto = '';
+function cerrarVMPop() { const p = document.getElementById('vm-pop'); if (p) p.remove(); vmAbierto = ''; document.querySelectorAll('.vm-ico.activo').forEach(b => b.classList.remove('activo')); }
+function abrirVMPop(btn, fijar) {
+  const clave = btn.dataset.vm, info = vmInfo[clave]; if (!info) return;
+  cerrarVMPop();
+  const p = document.createElement('div'); p.id = 'vm-pop'; p.className = 'vm-pop'; p.innerHTML = info;
+  document.body.appendChild(p);
+  const r = btn.getBoundingClientRect(), w = p.offsetWidth, h = p.offsetHeight;
+  let x = r.right + 10; if (x + w > innerWidth - 8) x = Math.max(8, r.left - w - 10);   // si no cabe a la derecha, va a la izquierda
+  p.style.left = x + 'px'; p.style.top = Math.max(8, Math.min(r.top + r.height / 2 - h / 2, innerHeight - h - 8)) + 'px';
+  btn.classList.add('activo'); vmAbierto = fijar ? clave : '';
+}
 function pintarVM() {
   const cont = $('#vm'), est = $('#vm-estado');
   if (!cont) return;
-  if (!vmDatos) { cont.innerHTML = '<p class="neu">Cargando…</p>'; return; }
-  if (vmDatos.error) { cont.innerHTML = '<p class="neu">' + esc(vmDatos.error) + '</p>'; return; }
-  const { campana: c, mensajes: m, compras: v } = vmDatos;
-  const aviso = x => '<p class="neu vm-aviso">' + esc(x.error) + '</p>';
+  if (!vmDatos) { cont.innerHTML = ''; return; }
+  const { campana: c, mensajes: m, compras: v } = vmDatos.error ? { campana: { error: vmDatos.error }, compras: { error: vmDatos.error } } : vmDatos;
   const dd = f => new Date(f).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
-  est.textContent = c && c.encontrada ? (c.desde ? (c.hasta ? 'Del ' + dd(c.desde) + ' al ' + dd(c.hasta) : 'Desde el ' + dd(c.desde) + ' · activa') : c.nombre + ' · ' + (c.activa ? 'activa' : c.estado)) : 'campaña';
+  const periodo = c && c.encontrada && c.desde ? (c.hasta ? 'Del ' + dd(c.desde) + ' al ' + dd(c.hasta) : 'Desde el ' + dd(c.desde) + ' · activa') : '';
+  est.textContent = c && c.encontrada ? c.nombre : '';
   let reel;
   if (c && c.reel) reel = '<iframe class="vm-reel" src="' + esc(c.reel.embed) + '" title="Reel que se promociona" loading="lazy" scrolling="no" allowfullscreen referrerpolicy="origin-when-cross-origin"></iframe>' +
     '<a class="vm-enlace" href="' + esc(c.reel.url) + '" target="_blank" rel="noopener">Abrir en ' + (c.reel.red === 'instagram' ? 'Instagram' : 'Facebook') + '</a>';
   else reel = '<div class="vm-reel vacio neu">' + (c && c.error ? esc(c.error) : c && !c.encontrada ? 'No encontré una campaña de Consejo Maker en Meta (su nombre debe incluir "Consejo Maker" o "Viernes"). ' + (c.activas && c.activas.length ? 'Campañas activas: ' + c.activas.map(esc).join(', ') + '.' : 'No hay campañas activas.') : 'El anuncio no trae un reel que se pueda mostrar.') + '</div>';
-  const dato = (n, t, extra) => '<div class="vm-dato"><b>' + (n == null ? '—' : fmt(n)) + '</b><span>' + t + '</span>' + (extra ? '<small>' + extra + '</small>' : '') + '</div>';
-  const campanaOk = c && c.encontrada;
-  const delPanel = m && !m.error ? fmt(m.total) + ' llegaron al panel' : '';
-  const arriba = campanaOk ? dato(c.visualizaciones, 'visualizaciones') + dato(c.mensajes, 'mensajes iniciados', delPanel) : '<p class="neu vm-aviso">' + esc(c && c.error ? c.error : 'Sin datos de la campaña.') + '</p>';
-  const abajo = !v ? '' : v.error ? aviso(v) : dato(v.chapultepec, 'Viernes de Consejo Maker Chapultepec') + dato(v.interlomas, 'Viernes de Consejo Maker Interlomas');
   const cr = $('#vm-reel'), clave = c && c.reel ? c.reel.embed : (c ? 'sin-reel' : '');
   if (cr && cr.dataset.reel !== clave) { cr.dataset.reel = clave; cr.innerHTML = reel; }   // el reel solo se vuelve a cargar si cambia, para que no se reinicie cada minuto
-  cont.innerHTML = '<h4>Campaña en Meta</h4><div class="vm-datos">' + arriba + '</div><h4>Compras en WooCommerce · desde el 13 nov</h4><div class="vm-datos">' + abajo + '</div>';
-
+  const campanaOk = c && c.encontrada;
+  const falla = x => '<b class="vm-t">' + esc(x.error || 'Sin datos') + '</b>';
+  const pop = (titulo, grande, texto, extra) => '<b class="vm-t">' + titulo + '</b><span class="vm-n">' + grande + '</span><span class="vm-d">' + texto + '</span>' + (extra ? '<span class="vm-x">' + extra + '</span>' : '');
+  const sede = (n, nombre) => v && !v.error ? pop('Viernes de Consejo Maker ' + nombre, fmt(n), n === 1 ? 'lugar vendido' : 'lugares vendidos', 'Compras en WooCommerce desde el 13 nov') : falla(v || {});
+  vmInfo = {
+    vistas: campanaOk ? pop('Visualizaciones', fmt(c.visualizaciones), 'veces que se mostró el anuncio', fmt(c.alcance) + ' personas alcanzadas · ' + fmt(c.reproducciones) + ' reproducciones' + (periodo ? '<br>' + periodo : '')) : falla(c || {}),
+    mensajes: campanaOk ? pop('Mensajes iniciados', fmt(c.mensajes), 'conversaciones que empezaron desde el anuncio', (m && !m.error ? fmt(m.total) + ' llegaron al panel' : '') + (periodo ? '<br>' + periodo : '')) : falla(c || {}),
+    chapultepec: sede(v && v.chapultepec, 'Chapultepec'),
+    interlomas: sede(v && v.interlomas, 'Interlomas'),
+  };
+  const num = n => (n == null || n === '' ? '' : '<i class="vm-num">' + (n > 999 ? compacto(n) : n) + '</i>');
+  const boton = (clave, nombre, n) => '<button type="button" class="vm-ico' + (vmAbierto === clave ? ' activo' : '') + '" data-vm="' + clave + '" aria-label="' + nombre + '"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + VM_ICONOS[clave] + '</svg>' + num(n) + (clave === 'chapultepec' ? '<em>C</em>' : clave === 'interlomas' ? '<em>I</em>' : '') + '</button>';
+  cont.innerHTML = boton('vistas', 'Visualizaciones', campanaOk ? c.visualizaciones : null) + boton('mensajes', 'Mensajes iniciados', campanaOk ? c.mensajes : null) +
+    boton('chapultepec', 'Compras Chapultepec', v && !v.error ? v.chapultepec : null) + boton('interlomas', 'Compras Interlomas', v && !v.error ? v.interlomas : null);
+  cont.querySelectorAll('.vm-ico').forEach(b => {
+    b.addEventListener('mouseenter', () => { if (!vmAbierto) abrirVMPop(b, false); });
+    b.addEventListener('mouseleave', () => { if (!vmAbierto) cerrarVMPop(); });
+    b.addEventListener('focus', () => { if (!vmAbierto) abrirVMPop(b, false); });
+    b.addEventListener('blur', () => { if (!vmAbierto) cerrarVMPop(); });
+    b.addEventListener('click', e => { e.stopPropagation(); if (vmAbierto === b.dataset.vm) cerrarVMPop(); else abrirVMPop(b, true); });   // al tocarlo queda abierto
+  });
+  if (vmAbierto) { const b = cont.querySelector('[data-vm="' + vmAbierto + '"]'); if (b) abrirVMPop(b, true); }   // la actualización de cada minuto no cierra la burbuja
 }
+document.addEventListener('click', e => { if (vmAbierto && !e.target.closest('#vm-pop')) cerrarVMPop(); });
 async function cargarVM() {
   try {
     const r = await fetch('/api/viernes-maker'), j = await r.json().catch(() => ({}));

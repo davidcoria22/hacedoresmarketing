@@ -561,37 +561,28 @@ body[data-vista="mensajes"] .msg-app { height: calc(100vh - 28px); min-height: 4
 .resp .adj-quitar { width: 28px; height: 28px; padding: 0; border-radius: 50%; background: #4a4a47; font-size: 16px; line-height: 1; }
 .conv.arrastrando { outline: 2px dashed var(--rosa); outline-offset: -6px; }
 
-/* Redes: campaña Viernes de Consejo Maker */
-.rejilla.redes-vm { grid-template-columns: minmax(250px, 300px) minmax(0, 1fr) minmax(0, 1fr); }
-.vm-card-reel { grid-row: span 2; display: flex; flex-direction: column; }
-.vm-card-reel #vm-reel { display: flex; flex-direction: column; gap: 8px; }
-.tarjeta.vm-ancha { grid-column: span 2; }
-.vm-reel { width: 100%; height: 520px; border: 0; border-radius: 20px; background: #fff; }
-.vm-reel.vacio { display: grid; place-items: center; text-align: center; padding: 16px; height: 220px; }
+/* Redes: el reel con una columna de iconos al lado (al pasar o tocar un icono sale su información) */
+.rejilla.redes-vm { grid-template-columns: minmax(330px, 390px) minmax(0, 1fr) minmax(0, 1fr); }
+.rejilla.redes-vm .vm-card-reel { grid-column: 1; grid-row: 1 / span 2; }
+.rejilla.redes-vm .tarjeta.ancha { grid-column: 2 / -1; }
+.vm-tit-nombre { font-size: 12px; }
+.vm-lado { display: flex; gap: 12px; align-items: flex-start; }
+#vm-reel { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.vm-reel { width: 100%; height: 560px; border: 0; border-radius: 20px; background: #fff; }
+.vm-reel.vacio { display: grid; place-items: center; text-align: center; padding: 16px; height: 220px; font-size: 13px; }
 .vm-enlace { font-size: 13px; color: var(--rosa); text-align: center; }
-.vm-datos { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
-.vm-dato { background: #fff; border-radius: 18px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
-.vm-dato b { font-size: 24px; font-weight: 600; }
-.vm-dato span { font-size: 12px; color: #7a766d; }
-.vm-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-.vm-cols h4 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
-.vm-res { margin: 0 0 8px; font-size: 13px; }
-.vm-fila { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; background: #fff; border-radius: 14px; padding: 8px 12px; margin-bottom: 6px; font-size: 13px; }
-.vm-fila > div { display: flex; flex-direction: column; min-width: 0; }
-.vm-fila > div span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.vm-fila > span { flex: none; font-size: 12px; }
-.vm-aviso { font-size: 13px; }
-@media (max-width: 900px) { .rejilla.redes-vm { grid-template-columns: 1fr; } .vm-card-reel, .tarjeta.vm-ancha { grid-column: auto; grid-row: auto; } .vm-datos { grid-template-columns: repeat(2, minmax(0, 1fr)); } .vm-cols { grid-template-columns: 1fr; } .vm-reel { height: 480px; } }
-.rejilla.redes-vm .tarjeta.ancha { grid-column: 1 / -1; }
-.rejilla.redes-vm .tarjeta.vm-ancha { grid-column: 2 / -1; }
-.vm-reel { height: 560px; }
-@media (max-width: 900px) { .rejilla.redes-vm .tarjeta.ancha, .rejilla.redes-vm .tarjeta.vm-ancha { grid-column: auto; } }
-
-/* Redes: el video a la izquierda y, a su lado, los números de la campaña; la gráfica y las redes debajo */
-.rejilla.redes-vm .vm-card-reel { grid-column: 1; grid-row: 1; }
-.rejilla.redes-vm .tarjeta.vm-ancha { grid-column: 2 / -1; grid-row: 1; }
-.rejilla.redes-vm .tarjeta.vm-ancha h4 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
-.vm-datos { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 18px; }
-.vm-dato b { font-size: 34px; }
-.vm-dato small { font-size: 12px; color: #7a766d; }
-@media (max-width: 900px) { .rejilla.redes-vm .vm-card-reel, .rejilla.redes-vm .tarjeta.vm-ancha { grid-column: auto; grid-row: auto; } }
+.vm-col { display: flex; flex-direction: column; gap: 10px; flex: none; }
+.vm-ico { position: relative; width: 48px; height: 48px; border: 0; border-radius: 16px; background: #fff; color: var(--texto); display: grid; place-items: center; cursor: pointer; }
+.vm-ico:hover, .vm-ico.activo { background: var(--rosa-suave); color: var(--rosa); }
+.vm-ico .vm-num { position: absolute; top: -5px; right: -5px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--rosa); color: #fff; font-size: 10px; font-style: normal; display: grid; place-items: center; }
+.vm-ico em { position: absolute; bottom: 3px; right: 6px; font-size: 9px; font-style: normal; color: var(--suave); }
+.vm-pop { position: fixed; z-index: 60; width: 250px; background: #fff; border-radius: 20px; padding: 14px 16px; box-shadow: 0 10px 30px rgba(0, 0, 0, .16); display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.vm-pop .vm-t { font-weight: 500; font-size: 14px; }
+.vm-pop .vm-n { font-size: 32px; font-weight: 600; line-height: 1.1; }
+.vm-pop .vm-d { color: var(--suave); }
+.vm-pop .vm-x { color: var(--suave); font-size: 12px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--linea); }
+@media (max-width: 900px) {
+  .rejilla.redes-vm { grid-template-columns: 1fr; }
+  .rejilla.redes-vm .vm-card-reel, .rejilla.redes-vm .tarjeta.ancha { grid-column: auto; grid-row: auto; }
+  .vm-reel { height: 480px; }
+}
