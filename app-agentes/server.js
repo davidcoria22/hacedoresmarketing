@@ -430,11 +430,11 @@ const manejar = async (req, res) => {
       if (!puede('responder')) return niega();
       if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra con la contraseña del panel.' });
       if (req.headers['x-panel'] !== '1') return enviarJSON(res, 403, { error: 'Solicitud no válida.' });   // cabecera propia: otras páginas web no pueden mandarla (el navegador las bloquea)
-      const { ref, texto } = await leerCuerpo(req);
+      const { ref, texto, red } = await leerCuerpo(req);
       try {
         const u = auth.usuarioGoogle(req);   // quién escribe: el nombre de su cuenta de Google (en local, sin nombre)
         const autor = u ? (u.nombre || String(u.email).split('@')[0]) : '';
-        const r = await require('./whatsapp.js').responderDesdePanel(ref, texto, autor);
+        const r = red === 'instagram' || red === 'facebook' ? await require('./meta-mensajes.js').responderDesdePanel(red, ref, texto, autor) : await require('./whatsapp.js').responderDesdePanel(ref, texto, autor);
         return enviarJSON(res, r.codigo || 200, r.ok ? { ok: true } : { error: r.error });
       } catch (e) { return enviarJSON(res, 502, { error: 'No se pudo enviar: ' + e.message }); }
     }

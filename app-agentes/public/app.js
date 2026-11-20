@@ -1062,18 +1062,19 @@ function pintarConversacion(desplazar) {
   activarRespuesta(c, borrador, teniaFoco);
 }
 
-// ---------- contestar desde el panel (solo WhatsApp, dentro de las 24 h del último mensaje del cliente) ----------
+// ---------- contestar desde el panel (WhatsApp, Instagram y Facebook, dentro de las 24 h del último mensaje de la persona) ----------
+// Por Instagram y Facebook solo se manda texto; archivos, fotos y stickers únicamente por WhatsApp.
 function cajaRespuesta(c) {
-  if (c.red !== 'whatsapp') return '<p class="resp-nota">Por ahora solo se puede contestar desde aquí en WhatsApp.</p>';
+  const redNombre = RED_MSG[c.red] ? RED_MSG[c.red].nombre : '';
   if (!puede('responder')) return '<p class="resp-nota">Tu rol puede ver esta conversación, pero no responder.</p>';
-  if (!c.ref) return '<p class="resp-nota">Esta conversación es anterior a esta función y no tengo su número completo. Contesta desde la app de WhatsApp.</p>';
+  if (!c.ref) return '<p class="resp-nota">Esta conversación es anterior a esta función y no tengo ' + (c.red === 'whatsapp' ? 'su número completo' : 'el dato para contestarle') + '. Contesta desde la app de ' + redNombre + '.</p>';
   const ultimo = [...c.mensajes].reverse().find(m => m.direccion !== 'salida');
-  if (!ultimo || Date.now() - new Date(ultimo.fecha) > 24 * 3600000) return '<p class="resp-nota">Pasaron más de 24 horas desde su último mensaje. WhatsApp solo permite plantillas aprobadas, así que no se puede contestar con texto libre.</p>';
+  if (!ultimo || Date.now() - new Date(ultimo.fecha) > 24 * 3600000) return '<p class="resp-nota">Pasaron más de 24 horas desde su último mensaje. ' + (c.red === 'whatsapp' ? 'WhatsApp solo permite plantillas aprobadas, así que no se puede contestar con texto libre.' : redNombre + ' ya no permite contestarle desde aquí.') + '</p>';
   const ic = d => `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   return `<div class="resp">
     <div class="resp-adj" hidden></div>
     <div class="resp-caja">
-      <div class="resp-clip-zona">
+      <div class="resp-clip-zona"${c.red === 'whatsapp' ? '' : ' hidden'}>
         <button type="button" class="resp-clip" aria-label="Adjuntar" aria-haspopup="menu" aria-expanded="false" title="Adjuntar">${ic('M20 11.5 12.2 19.3a5 5 0 0 1-7-7l8-8a3.3 3.3 0 0 1 4.7 4.7l-8 8a1.7 1.7 0 0 1-2.4-2.4l7.3-7.3')}</button>
         <div class="resp-menu" role="menu" hidden>
           <button type="button" role="menuitem" data-tipo="imagen">${ic('M4 6h16v12H4zM4 15l4.5-4.5 3.5 3.5 2.5-2.5L20 16M9 9.5h.01')}<span>Foto o video</span></button>
@@ -1085,7 +1086,7 @@ function cajaRespuesta(c) {
       <button type="button" class="resp-enviar" aria-label="Enviar" title="Enviar (Enter)"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 19V6M6 11.5 12 5.5l6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
     <input type="file" class="resp-archivo" hidden>
-    <div class="resp-pie"><span class="resp-error" role="alert"></span><small class="resp-ayuda">Enter envía · Mayús + Enter salto de línea · también puedes pegar o arrastrar archivos</small></div>
+    <div class="resp-pie"><span class="resp-error" role="alert"></span><small class="resp-ayuda">Enter envía · Mayús + Enter salto de línea · ${c.red === 'whatsapp' ? 'también puedes pegar o arrastrar archivos' : 'solo texto por ' + redNombre}</small></div>
   </div>`;
 }
 // ---- archivos para enviar (hasta 4 MB: es lo que recibe el servidor en línea) ----
@@ -1154,6 +1155,7 @@ function activarRespuesta(c, borrador, teniaFoco) {
   const ocupado = si => { enviando = si; texto.readOnly = si; enviar.disabled = si; clip.disabled = si; caja.classList.toggle('enviando', si); };
   async function elegir(archivo, tipo) {
     error.textContent = '';
+    if (c.red !== 'whatsapp') { error.textContent = 'Por ' + RED_MSG[c.red].nombre + ' solo se puede mandar texto.'; return; }
     try {
       const v = await validarArchivo(archivo, tipo);
       if (adjuntoPend && adjuntoPend.vista) URL.revokeObjectURL(adjuntoPend.vista);
@@ -1182,7 +1184,7 @@ function activarRespuesta(c, borrador, teniaFoco) {
         const a = adjuntoPend;
         r = await fetch('/api/enviar-archivo?ref=' + encodeURIComponent(c.ref) + '&tipo=' + a.tipo + '&nombre=' + encodeURIComponent(a.nombre) + '&pie=' + encodeURIComponent(a.tipo === 'sticker' ? '' : texto.value.trim()), { method: 'POST', headers: { 'Content-Type': a.mime, 'x-panel': '1' }, body: a.blob });
       } else {
-        r = await fetch('/api/responder', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-panel': '1' }, body: JSON.stringify({ ref: c.ref, texto: texto.value }) });
+        r = await fetch('/api/responder', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-panel': '1' }, body: JSON.stringify({ ref: c.ref, texto: texto.value, red: c.red }) });
       }
       j = await r.json().catch(() => ({}));
       if (!r.ok) { ocupado(false); error.textContent = r.status === 401 ? 'Tu sesión venció. Entra de nuevo.' : r.status === 413 ? 'El archivo es muy grande. Por ahora el máximo es 4 MB.' : (j.error || 'No se pudo enviar.'); return; }

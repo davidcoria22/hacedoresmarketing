@@ -117,3 +117,22 @@ test('si Supabase falla un momento, leerMensajes sigue con lo último leído (y 
   test.mock.timers.tick(121000);
   await assert.rejects(() => mensajes.leerMensajes(), /Supabase respondió 500/);
 });
+
+test('los mensajes de Instagram y Facebook también guardan el id de quien escribe (para poder contestarle) y su ref', async () => {
+  preparar();
+  await mensajes.guardarMensajes([{ red: 'instagram', nombre: '@ana', numero: '17841400000001234', tipo: 'text', texto: 'hola', origen: 'directo', respuesta: 'ninguna', id: 'm1' }]);
+  const f = sb.tablas.mensajes[0];
+  assert.strictEqual(f.contacto, '17841400000001234');
+  assert.strictEqual(f.ref, mensajes.refDe('17841400000001234'));
+  assert.strictEqual(f.telefono, 'ID ••1234');   // en el panel solo se ve enmascarado
+  const lista = await mensajes.leerMensajes(10, 'instagram', true);
+  assert.ok(!('contacto' in lista[0]));
+});
+
+test('buscarContacto busca en la red pedida y no mezcla WhatsApp con Instagram', async () => {
+  preparar([fila(1, { red: 'instagram', contacto: '17841400000001234' }), fila(2, { red: 'whatsapp', contacto: '17841400000001234', fecha: '2026-11-18T10:00:00.000Z' })]);
+  const ref = mensajes.refDe('17841400000001234');
+  const r = await mensajes.buscarContacto(ref, 'instagram');
+  assert.deepStrictEqual(r, { numero: '17841400000001234', ultimaEntrada: Date.parse('2026-11-17T11:00:00.000Z') });
+  assert.strictEqual(await mensajes.buscarContacto(ref, 'tiktok'), null);
+});

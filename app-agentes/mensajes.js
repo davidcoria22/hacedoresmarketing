@@ -35,7 +35,7 @@ async function guardarMensajes(registros) {
     }
   } catch { /* si no se puede revisar, se anota igual */ }
   if (!registros.length) return;
-  const filas = registros.map(r => [fecha, r.red, limpiar(r.nombre, 60), r.red === 'whatsapp' ? enmascarar(r.numero) : (r.numero ? 'ID ••' + String(r.numero).slice(-4) : ''), r.tipo, limpiar(r.texto, r.direccion === 'salida' ? 1000 : 300, r.direccion === 'salida'), r.origen, r.respuesta, r.id || '', r.direccion || 'entrada', r.red === 'whatsapp' ? String(r.numero || '').replace(/\D/g, '') : '', r.media || '', limpiar(r.autor, 60)]);
+  const filas = registros.map(r => [fecha, r.red, limpiar(r.nombre, 60), r.red === 'whatsapp' ? enmascarar(r.numero) : (r.numero ? 'ID ••' + String(r.numero).slice(-4) : ''), r.tipo, limpiar(r.texto, r.direccion === 'salida' ? 1000 : 300, r.direccion === 'salida'), r.origen, r.respuesta, r.id || '', r.direccion || 'entrada', String(r.numero || '').replace(/\D/g, ''), r.media || '', limpiar(r.autor, 60)]);
   const url = 'https://sheets.googleapis.com/v4/spreadsheets/' + h.SHEET_ID + '/values/' + encodeURIComponent(PESTANA + '!A:M') + ':append?valueInputOption=RAW&insertDataOption=INSERT_ROWS';
   const cab = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' };
   let r = await h.petición('POST', url, JSON.stringify({ values: filas }), cab);
@@ -56,7 +56,7 @@ const cacheSb = new Map();   // lecturas del panel en Supabase: 4 s, y si la bas
 async function guardarSb(registros) {
   const fecha = new Date().toISOString();
   const filas = registros.map(r => {
-    const contacto = r.red === 'whatsapp' ? soloDig(r.numero) : '';
+    const contacto = soloDig(r.numero);   // en WhatsApp es el teléfono; en Instagram y Facebook, el id de quien escribe (solo sirve para contestarle)
     let media = null;
     if (r.media) { try { media = typeof r.media === 'string' ? JSON.parse(r.media) : r.media; } catch { media = null; } }
     const direccion = r.direccion || 'entrada';
@@ -127,12 +127,13 @@ async function leerMensajes(limite = 50, red = '', todos = false) {
     });
 }
 
-// Para responder desde el panel: número completo y fecha del último mensaje del cliente en esa conversación de WhatsApp.
-async function buscarContacto(ref) {
+// Para responder desde el panel: número (o id) completo y fecha del último mensaje de la persona en esa conversación.
+async function buscarContacto(ref, red = 'whatsapp') {
+  if (!['whatsapp', 'instagram', 'facebook'].includes(red)) return null;
   if (!/^[0-9a-f]{12}$/.test(String(ref || ''))) return null;
   if (db.usa('mensajes')) {
     let numero = '', ultimaEntrada = 0;
-    for (const f of await db.select('mensajes', { ref: 'eq.' + ref, red: 'eq.whatsapp', select: 'contacto,fecha,direccion' })) {
+    for (const f of await db.select('mensajes', { ref: 'eq.' + ref, red: 'eq.' + red, select: 'contacto,fecha,direccion' })) {
       if (!f.contacto) continue;
       numero = f.contacto;
       if ((f.direccion || 'entrada') !== 'salida') ultimaEntrada = Math.max(ultimaEntrada, Date.parse(f.fecha) || 0);
@@ -146,7 +147,7 @@ async function buscarContacto(ref) {
   let numero = '', ultimaEntrada = 0;
   for (const f of JSON.parse(r.body).values || []) {
     const contacto = f[10] || '';
-    if (!contacto || f[1] !== 'whatsapp' || refDe(contacto) !== ref) continue;
+    if (!contacto || f[1] !== red || refDe(contacto) !== ref) continue;
     numero = contacto;
     if ((f[9] || 'entrada') !== 'salida') ultimaEntrada = Math.max(ultimaEntrada, Date.parse(f[0]) || 0);
   }
