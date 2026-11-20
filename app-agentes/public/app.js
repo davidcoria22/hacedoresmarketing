@@ -965,9 +965,11 @@ function htmlAdjunto(a) {
   return '<a class="adj adj-doc" href="' + u + '" download="' + esc(a.n || 'archivo') + '"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M7 3h7l5 5v13H7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3v5h5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg><span>' + esc(a.n || 'Documento') + '</span><small>Descargar</small></a>';
 }
 
+// Foto de perfil encima de la inicial: Instagram y Facebook la entregan; WhatsApp no, ahí se queda la inicial. Si no carga, se quita sola.
+const fotoDe = c => c.ref && (c.red === 'instagram' || c.red === 'facebook') ? '<img class="av-foto" src="/api/foto-contacto?red=' + c.red + '&ref=' + encodeURIComponent(c.ref) + '" alt="" loading="lazy" onerror="this.remove()">' : '';
 function filaContacto(c) {
   return `<button type="button" class="ct ${c.clave === convActiva ? 'sel' : ''}" data-conv="${esc(c.clave)}">
-    <span class="av">${esc(inicial(c))}</span><span class="x"><span class="n">${esc(c.titulo)}</span><span class="s">${esc(vistaPrevia(c))}</span></span><span class="punto ${pendiente(c) ? '' : 'ok'}"></span></button>`;
+    <span class="av">${esc(inicial(c))}${fotoDe(c)}</span><span class="x"><span class="n">${esc(c.titulo)}</span><span class="s">${esc(vistaPrevia(c))}</span></span><span class="punto ${pendiente(c) ? '' : 'ok'}"></span></button>`;
 }
 function filaColumna(c) {
   const etqs = c.red === 'whatsapp' ? (c.archivada && filtroWa !== 'archivados' ? '<i class="mini-etq">Archivado</i>' : '') + (c.delAnuncio ? '<i class="mini-etq">Anuncio</i>' : '') + (c.agenteRespondio ? '<i class="mini-etq ok">Respuesta del agente</i>' : '') : '';
@@ -1080,7 +1082,7 @@ function pintarConversacion(desplazar) {
     return `<div class="burbuja-c ${cls}">${m.adjunto ? htmlAdjunto(m.adjunto) : ''}${texto ? '<div class="txt-c">' + esc(texto) + '</div>' : ''}<small>${esc(quien)} · ${esc(hora(m.fecha))}</small></div>`;
   }).join('');
   const est = c.estado === 'ok' ? ['Respondido', ''] : c.estado === 'espera' ? ['Respuesta programada', 'p'] : ['Sin respuesta', 'p'];
-  cont.innerHTML = `<div class="cab"><span class="av"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">${r.icono}</svg></span>
+  cont.innerHTML = `<div class="cab"><span class="av"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">${r.icono}</svg>${fotoDe(c)}</span>
     <div><p>${esc(c.titulo)}</p><p class="s">${r.nombre}${c.nombre && c.telefono ? ' · ' + esc(c.telefono) : ''}</p></div>
     <span class="est ${est[1]}">${est[0]}</span><button class="cerrar-conv" type="button" aria-label="Cerrar conversación">×</button></div>
     <div class="hilo">${burbujas}</div>

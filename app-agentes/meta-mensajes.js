@@ -150,6 +150,21 @@ async function enviarArchivoDesdePanel(red, ref, d, autor = '') {
   return { ok: true };
 }
 
+// Foto de perfil de quien escribe (Instagram y Facebook; WhatsApp no la entrega). Se guarda en memoria unos minutos.
+const cacheFotos = new Map();
+async function fotoContacto(red, ref) {
+  if (red !== 'instagram' && red !== 'facebook') return '';
+  const k = red + '|' + ref, previo = cacheFotos.get(k);
+  if (previo && Date.now() - previo.t < previo.vida) return previo.url;
+  let url = '';
+  try {
+    const token = tokenPagina(), c = token ? await require('./mensajes.js').buscarContacto(ref, red) : null;
+    if (c) { const r = await pedir(encodeURIComponent(c.numero) + '?fields=profile_pic', token); if (r.ok) url = urlOk(r.j.profile_pic); }
+  } catch { /* sin foto */ }
+  cacheFotos.set(k, { url, t: Date.now(), vida: url ? 10 * 60000 : 2 * 60000 });
+  return url;
+}
+
 // Carpetas de la bandeja de Instagram (principal, general y solicitudes): a qué carpeta pertenece cada conversación.
 // Devuelve { principal: [ref...], general: [...], solicitudes: [...], errores: {carpeta: motivo} }; solo viajan las referencias, no los ids.
 const CARPETAS_IG = { principal: 'primary', general: 'general', solicitudes: 'requests' };
@@ -224,4 +239,4 @@ async function manejarMeta(req, res, url) {
   return fin(200, 'ok'), true;
 }
 
-module.exports = { manejarMeta, responderDesdePanel, enviarArchivoDesdePanel, carpetasInstagram, adjuntoDe, LIMITE_ARCHIVO };
+module.exports = { manejarMeta, responderDesdePanel, enviarArchivoDesdePanel, carpetasInstagram, fotoContacto, adjuntoDe, LIMITE_ARCHIVO };

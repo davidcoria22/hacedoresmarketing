@@ -116,3 +116,13 @@ test('carpetas de Instagram: devuelve referencias por carpeta y anota la que fal
   assert.match(r.errores.solicitudes, /carpeta no válida/);
   assert.ok(!JSON.stringify(r).includes('"111"'));
 });
+
+test('fotoContacto pide la foto de perfil a Instagram o Facebook y solo acepta direcciones de Meta', async () => {
+  preparar([fila(1), fila(2, { red: 'facebook', contacto: '555' })], { meta: u => u.includes('/17841400000001234?') ? resp(true, { profile_pic: 'https://scontent.cdninstagram.com/yo.jpg' }) : resp(true, { profile_pic: 'https://malo.example.com/x.jpg' }) });
+  assert.strictEqual(await M.fotoContacto('instagram', ref()), 'https://scontent.cdninstagram.com/yo.jpg');
+  assert.match(meta[0].url, /fields=profile_pic/);
+  assert.strictEqual(await M.fotoContacto('facebook', mensajes.refDe('555')), '');
+  assert.strictEqual(await M.fotoContacto('whatsapp', ref()), '');   // WhatsApp no entrega fotos de perfil
+  const antes = meta.length; await M.fotoContacto('instagram', ref());
+  assert.strictEqual(meta.length, antes);   // la segunda vez sale de la memoria
+});

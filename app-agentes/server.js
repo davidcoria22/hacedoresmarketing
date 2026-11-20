@@ -420,6 +420,15 @@ const manejar = async (req, res) => {
       }
       catch (e) { return enviarJSON(res, 502, { error: 'No se pudieron leer los mensajes: ' + e.message }); }
     }
+    if (req.method === 'GET' && url.pathname === '/api/foto-contacto') {   // foto de perfil de quien escribe: se redirige a la dirección de Meta
+      if (!puede('ver_mensajes')) return niega();
+      if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true });
+      try {
+        const foto = await require('./meta-mensajes.js').fotoContacto(url.searchParams.get('red'), url.searchParams.get('ref'));
+        if (!foto) { res.writeHead(404, { 'Cache-Control': 'private, max-age=120' }); return res.end(); }
+        res.writeHead(302, { Location: foto, 'Cache-Control': 'private, max-age=600', 'Referrer-Policy': 'no-referrer' }); return res.end();
+      } catch { res.writeHead(404); return res.end(); }
+    }
     if (req.method === 'GET' && url.pathname === '/api/instagram-carpetas') {   // a qué carpeta de la bandeja de Instagram pertenece cada conversación
       if (!puede('ver_mensajes')) return niega();
       if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra con tu cuenta.' });
