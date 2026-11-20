@@ -420,6 +420,12 @@ const manejar = async (req, res) => {
       }
       catch (e) { return enviarJSON(res, 502, { error: 'No se pudieron leer los mensajes: ' + e.message }); }
     }
+    if (req.method === 'GET' && url.pathname === '/api/instagram-carpetas') {   // a qué carpeta de la bandeja de Instagram pertenece cada conversación
+      if (!puede('ver_mensajes')) return niega();
+      if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra con tu cuenta.' });
+      try { return enviarJSON(res, 200, await require('./meta-mensajes.js').carpetasInstagram()); }
+      catch (e) { return enviarJSON(res, 502, { error: e.message }); }
+    }
     if (req.method === 'GET' && url.pathname === '/api/whatsapp-media') {   // fotos, documentos, audios y videos de WhatsApp
       if (!puede('ver_mensajes')) return niega();
       if (MODO_PUBLICO && !auth.sesionValida(req)) return enviarJSON(res, 401, { requiereLogin: true, error: 'Entra con tu cuenta.' });
@@ -449,8 +455,10 @@ const manejar = async (req, res) => {
         const u = auth.usuarioGoogle(req);
         const autor = u ? (u.nombre || String(u.email).split('@')[0]) : '';
         const q = url.searchParams;
-        const r = await W.enviarArchivoDesdePanel(q.get('ref'), { tipo: q.get('tipo'), nombre: q.get('nombre'), pie: q.get('pie'), mime: req.headers['content-type'], datos }, autor);
-        return enviarJSON(res, r.codigo || 200, r.ok ? { ok: true } : { error: r.error });
+        const d = { tipo: q.get('tipo'), nombre: q.get('nombre'), pie: q.get('pie'), mime: req.headers['content-type'], datos };
+        const red = q.get('red');
+        const r = red === 'instagram' || red === 'facebook' ? await require('./meta-mensajes.js').enviarArchivoDesdePanel(red, q.get('ref'), d, autor) : await W.enviarArchivoDesdePanel(q.get('ref'), d, autor);
+        return enviarJSON(res, r.codigo || 200, r.ok ? { ok: true, aviso: r.aviso } : { error: r.error });
       } catch (e) { return enviarJSON(res, 502, { error: 'No se pudo enviar: ' + e.message }); }
     }
     if (req.method === 'GET' && url.pathname === '/api/meta-ads') {   // cómo van los anuncios de Facebook e Instagram (solo lectura)

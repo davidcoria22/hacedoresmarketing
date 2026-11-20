@@ -50,43 +50,132 @@ async function perfil(id, red, mid) {
   return '';
 }
 
-function textoDe(m) {
-  if (m.text) return m.text;
-  const adj = (m.attachments || [])[0];
-  if (adj) return '[' + (adj.type || 'adjunto') + ']';
-  return '';
+// Texto del mensaje (lo que se adjunta se guarda aparte, en "media")
+const textoDe = m => String(m.text || '');
+
+// Archivos que llegan: solo se aceptan direcciones https de Meta (o de nuestro almacén)
+const HOST_OK = /(^|\.)(fbcdn\.net|cdninstagram\.com|facebook\.com|instagram\.com|fbsbx\.com|supabase\.co)$/i;
+const urlOk = u => { try { const x = new URL(String(u || '')); return x.protocol === 'https:' && HOST_OK.test(x.hostname) ? x.href : ''; } catch { return ''; } };
+const NOMBRE_ENLACE = { ig_reel: 'Reel', reel: 'Reel', share: 'Publicación', ig_post: 'Publicación', story_mention: 'Mención en historia', story: 'Historia' };
+// { t: 'image' | 'video' | 'audio' | 'file' | 'enlace', u: dirección, n: nombre } o null si no trae nada
+function adjuntoDe(m) {
+  const a = (m.attachments || [])[0]; if (!a) return null;
+  const tipo = String(a.type || ''), u = urlOk(a.payload && a.payload.url);
+  if (['image', 'video', 'audio', 'file'].includes(tipo)) return u ? { t: tipo, u } : { t: tipo };
+  const n = String(NOMBRE_ENLACE[tipo] || (a.payload && a.payload.title) || tipo || 'Compartido').slice(0, 80);
+  return u ? { t: 'enlace', u, n } : { t: 'enlace', n };
+}
+// Las direcciones de Meta caducan: lo recibido se copia a nuestro almacén (si no se puede, se queda la original)
+async function guardarAdjunto(adj) {
+  if (!adj || !adj.u || adj.t === 'enlace') return adj;
+  const copia = await require('./almacen.js').copiar(adj.u);
+  return copia ? { ...adj, u: copia } : adj;
 }
 
-// Respuesta escrita por una persona desde el panel, por Instagram o Messenger. Solo texto, y dentro de las 24 h del último mensaje de la persona.
+// Comprobaciones comunes antes de contestar desde el panel: red, clave de la página, a quién y la ventana de 24 h
+async function prepararEnvio(red, ref) {
+  if (red !== 'instagram' && red !== 'facebook') return { codigo: 400, error: 'Red no válida.' };
+  const nombre = red === 'instagram' ? 'Instagram' : 'Facebook';
+  const token = tokenPagina();
+  if (!token) return { codigo: 503, error: 'Falta la clave de ' + nombre + ' (META_PAGE_TOKEN) en este servidor.' };
+  const c = await require('./mensajes.js').buscarContacto(ref, red);
+  if (!c) return { codigo: 404, error: 'No tengo el dato para contestar esta conversación (es anterior a esta función). Responde desde la app de ' + nombre + '.' };
+  if (Date.now() - c.ultimaEntrada > 24 * 3600000) return { codigo: 409, error: 'Pasaron más de 24 horas desde su último mensaje. ' + nombre + ' ya no permite contestarle desde aquí.' };
+  return { token, nombre, c };
+}
+// Manda un mensaje (texto o archivo por dirección) y devuelve su id. Lanza un error con el motivo de Meta si lo rechaza.
+async function enviarMensaje(token, nombre, para, mensaje) {
+  const r = await fetch('https://graph.facebook.com/v21.0/me/messages?access_token=' + encodeURIComponent(token), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ recipient: { id: para }, messaging_type: 'RESPONSE', message: mensaje }), signal: AbortSignal.timeout(20000),
+  });
+  const cuerpo = await r.text();
+  if (!r.ok) {
+    let motivo = cuerpo.slice(0, 160); try { motivo = JSON.parse(cuerpo).error?.message || motivo; } catch { /* texto plano */ }
+    console.error('meta responder:', r.status, cuerpo.slice(0, 200));
+    throw new Error(nombre + ' no aceptó el mensaje: ' + String(motivo).slice(0, 160));
+  }
+  try { return JSON.parse(cuerpo).message_id || ''; } catch { return ''; }
+}
+async function anotarSalida(red, id, numero, texto, autor, extra = {}) {
+  try { await require('./mensajes.js').guardarMensajes([{ id: id || 'panel:' + Date.now() + Math.random().toString(36).slice(2, 6), red, nombre: '', numero, tipo: 'text', texto, origen: 'manual', respuesta: 'enviada', direccion: 'salida', autor, ...extra }]); }
+  catch (err) { console.error('mensajes: no se pudo anotar el envío:', err.message); }
+}
+
+// Respuesta escrita por una persona desde el panel, por Instagram o Messenger, dentro de las 24 h del último mensaje de la persona.
 // Devuelve { ok } o { error, codigo }.
 async function responderDesdePanel(red, ref, texto, autor = '') {
   if (red !== 'instagram' && red !== 'facebook') return { codigo: 400, error: 'Red no válida.' };
   texto = String(texto || '').trim();
   if (!texto) return { codigo: 400, error: 'Escribe un mensaje.' };
   if (texto.length > 1000) return { codigo: 400, error: 'El mensaje es muy largo (máximo 1000 caracteres).' };
-  const token = tokenPagina();
-  const nombre = red === 'instagram' ? 'Instagram' : 'Facebook';
-  if (!token) return { codigo: 503, error: 'Falta la clave de ' + nombre + ' (META_PAGE_TOKEN) en este servidor.' };
-  const c = await require('./mensajes.js').buscarContacto(ref, red);
-  if (!c) return { codigo: 404, error: 'No tengo el dato para contestar esta conversación (es anterior a esta función). Responde desde la app de ' + nombre + '.' };
-  if (Date.now() - c.ultimaEntrada > 24 * 3600000) return { codigo: 409, error: 'Pasaron más de 24 horas desde su último mensaje. ' + nombre + ' ya no permite contestarle desde aquí.' };
-  let id = '';
-  try {
-    const r = await fetch('https://graph.facebook.com/v21.0/me/messages?access_token=' + encodeURIComponent(token), {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ recipient: { id: c.numero }, messaging_type: 'RESPONSE', message: { text: texto } }), signal: AbortSignal.timeout(15000),
-    });
-    const cuerpo = await r.text();
-    if (!r.ok) {
-      let motivo = cuerpo.slice(0, 160); try { motivo = JSON.parse(cuerpo).error?.message || motivo; } catch { /* texto plano */ }
-      console.error('meta responder (' + red + '):', r.status, cuerpo.slice(0, 200));
-      return { codigo: 502, error: nombre + ' no aceptó el mensaje: ' + String(motivo).slice(0, 160) };
-    }
-    try { id = JSON.parse(cuerpo).message_id || ''; } catch { /* sin id */ }
-  } catch (e) { console.error('meta responder:', e.message); return { codigo: 502, error: 'No se pudo enviar por ' + nombre + ': ' + String(e.message).slice(0, 120) }; }
-  try { await require('./mensajes.js').guardarMensajes([{ id: id || 'panel:' + Date.now(), red, nombre: '', numero: c.numero, tipo: 'text', texto, origen: 'manual', respuesta: 'enviada', direccion: 'salida', autor }]); }
-  catch (err) { console.error('mensajes: no se pudo anotar el envío:', err.message); }
+  const p = await prepararEnvio(red, ref); if (p.error) return p;
+  let id;
+  try { id = await enviarMensaje(p.token, p.nombre, p.c.numero, { text: texto }); }
+  catch (e) { return { codigo: 502, error: String(e.message).slice(0, 200) }; }
+  await anotarSalida(red, id, p.c.numero, texto, autor);
   return { ok: true };
+}
+
+// Fotos, videos y (solo en Facebook) documentos. Meta los descarga de una dirección web, por eso se suben antes al almacén.
+const LIMITE_ARCHIVO = 4 * 1024 * 1024;   // lo máximo que recibe el servidor en línea
+const DOCS = ['application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'];
+const TIPOS_ENVIO = {
+  imagen: { api: 'image', mimes: ['image/jpeg', 'image/png', 'image/gif'], nombre: 'La foto' },
+  video: { api: 'video', mimes: ['video/mp4'], nombre: 'El video' },
+  documento: { api: 'file', mimes: DOCS, nombre: 'El documento', solo: 'facebook' },
+};
+async function enviarArchivoDesdePanel(red, ref, d, autor = '') {
+  if (red !== 'instagram' && red !== 'facebook') return { codigo: 400, error: 'Red no válida.' };
+  const t = TIPOS_ENVIO[d.tipo];
+  if (!t || (t.solo && t.solo !== red)) return { codigo: 400, error: d.tipo === 'documento' ? 'Instagram no permite mandar documentos. Manda una foto o un video.' : 'Tipo de archivo no válido.' };
+  const mime = String(d.mime || '').split(';')[0].trim().toLowerCase();
+  if (!t.mimes.includes(mime)) return { codigo: 415, error: t.nombre + ' no es de un formato que ' + (red === 'instagram' ? 'Instagram' : 'Facebook') + ' acepte' + (d.tipo === 'imagen' ? ' (JPG, PNG o GIF).' : d.tipo === 'video' ? ' (solo MP4).' : '.') };
+  const datos = d.datos;
+  if (!Buffer.isBuffer(datos) || !datos.length) return { codigo: 400, error: 'No llegó el archivo.' };
+  if (datos.length > LIMITE_ARCHIVO) return { codigo: 413, error: t.nombre + ' pesa más de 4 MB. Por ahora ese es el máximo (para un video más grande, manda el enlace).' };
+  const pie = String(d.pie || '').trim().slice(0, 1000);
+  const p = await prepararEnvio(red, ref); if (p.error) return p;
+  let url;
+  try { url = await require('./almacen.js').subir(datos, mime, 'salida'); }
+  catch (e) { console.error('meta archivo (subir):', e.message); return { codigo: 503, error: 'No pude guardar el archivo para enviarlo: ' + String(e.message).slice(0, 140) }; }
+  let id;
+  try { id = await enviarMensaje(p.token, p.nombre, p.c.numero, { attachment: { type: t.api, payload: { url, is_reusable: false } } }); }
+  catch (e) { return { codigo: 502, error: String(e.message).slice(0, 200) }; }
+  await anotarSalida(red, id, p.c.numero, pie, autor, { tipo: t.api, media: JSON.stringify({ t: t.api, u: url, ...(t.api === 'file' ? { n: String(d.nombre || 'archivo').slice(0, 100) } : {}) }) });
+  if (pie) {   // Messenger e Instagram no llevan pie de foto: el texto sale como un mensaje aparte
+    try { const id2 = await enviarMensaje(p.token, p.nombre, p.c.numero, { text: pie }); await anotarSalida(red, id2, p.c.numero, pie, autor, { texto: pie }); }
+    catch (e) { return { ok: true, aviso: 'La foto salió, pero el texto no: ' + e.message }; }
+  }
+  return { ok: true };
+}
+
+// Carpetas de la bandeja de Instagram (principal, general y solicitudes): a qué carpeta pertenece cada conversación.
+// Devuelve { principal: [ref...], general: [...], solicitudes: [...], errores: {carpeta: motivo} }; solo viajan las referencias, no los ids.
+const CARPETAS_IG = { principal: 'primary', general: 'general', solicitudes: 'requests' };
+let cacheCarpetas = { t: 0, v: null };
+async function carpetasInstagram() {
+  if (cacheCarpetas.v && Date.now() - cacheCarpetas.t < 60000) return cacheCarpetas.v;
+  const token = tokenPagina();
+  if (!token) throw new Error('Falta la clave de Instagram (META_PAGE_TOKEN) en este servidor.');
+  const { refDe } = require('./mensajes.js');
+  const res = { errores: {} };
+  for (const [nombre, carpeta] of Object.entries(CARPETAS_IG)) {
+    const refs = new Set();
+    try {
+      let ruta = 'me/conversations?platform=instagram&folder=' + carpeta + '&fields=participants&limit=50';
+      for (let n = 0; n < 6 && ruta; n++) {
+        const r = await pedir(ruta, token);
+        if (!r.ok) throw new Error(r.motivo);
+        for (const conv of r.j.data || []) for (const x of (conv.participants && conv.participants.data) || []) if (x.id) refs.add(refDe(String(x.id).replace(/\D/g, '')));
+        const sig = r.j.paging && r.j.paging.cursors && r.j.paging.next ? r.j.paging.cursors.after : '';
+        ruta = sig ? 'me/conversations?platform=instagram&folder=' + carpeta + '&fields=participants&limit=50&after=' + encodeURIComponent(sig) : '';
+      }
+    } catch (e) { res.errores[nombre] = String(e.message).slice(0, 160); }
+    res[nombre] = [...refs];
+  }
+  cacheCarpetas = { t: Date.now(), v: res };
+  return res;
 }
 
 // Devuelve true si atendió la ruta.
@@ -119,11 +208,13 @@ async function manejarMeta(req, res, url) {
       const m = ev.message; if (!m) continue;
       if (m.is_echo) {   // "eco": lo que manda la propia cuenta (tú, desde la app). Se guarda como salida de esa conversación.
         const para = ev.recipient?.id || ''; if (!para || !m.mid) continue;
-        registros.push({ id: m.mid, red, nombre: '', numero: para, tipo: m.attachments ? 'adjunto' : 'text', texto: textoDe(m), origen: 'manual', respuesta: 'enviada', direccion: 'salida' });
+        const adj = await guardarAdjunto(adjuntoDe(m));
+        registros.push({ id: m.mid, red, nombre: '', numero: para, tipo: adj ? adj.t : 'text', texto: textoDe(m), media: adj ? JSON.stringify(adj) : '', origen: 'manual', respuesta: 'enviada', direccion: 'salida' });
         continue;
       }
       const de = ev.sender?.id || ''; if (!de) continue;
-      registros.push({ id: m.mid || '', red, nombre: await perfil(de, red, m.mid), numero: de, tipo: m.attachments ? 'adjunto' : 'text', texto: textoDe(m), origen: 'directo', respuesta: 'ninguna' });
+      const adj = await guardarAdjunto(adjuntoDe(m));
+      registros.push({ id: m.mid || '', red, nombre: await perfil(de, red, m.mid), numero: de, tipo: adj ? adj.t : 'text', texto: textoDe(m), media: adj ? JSON.stringify(adj) : '', origen: 'directo', respuesta: 'ninguna' });
     }
   }
   if (registros.length) {
@@ -133,4 +224,4 @@ async function manejarMeta(req, res, url) {
   return fin(200, 'ok'), true;
 }
 
-module.exports = { manejarMeta, responderDesdePanel };
+module.exports = { manejarMeta, responderDesdePanel, enviarArchivoDesdePanel, carpetasInstagram, adjuntoDe, LIMITE_ARCHIVO };

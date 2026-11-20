@@ -394,6 +394,7 @@ th { color: var(--suave); font-weight: 500; font-size: 11px; text-transform: upp
 .filtro-wa small { opacity: .8; margin-left: 2px; font-size: 11px; }
 .filtro-wa:hover { background: #5F5E5A; color: #fff; }
 .filtro-wa.activo { background: var(--rosa); color: #fff; }
+.filtros-nota { flex: 1 1 100%; margin: 2px 4px 0; font-size: 11.5px; line-height: 1.4; color: #B4B2A9; }
 .ct.con-etq { flex-wrap: wrap; }
 .mini-etqs { display: flex; flex-wrap: wrap; gap: 4px; width: 100%; padding-left: 40px; margin-top: -2px; }
 .mini-etq { font-style: normal; font-size: 10.5px; line-height: 1; padding: 3px 8px; border-radius: 999px; background: #444441; color: #D3D1C7; }

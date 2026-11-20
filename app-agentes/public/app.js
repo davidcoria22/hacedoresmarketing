@@ -944,10 +944,20 @@ function armarConversaciones(lista) {
 const pendiente = c => c.estado !== 'ok';
 const inicial = c => (c.titulo.replace(/[@+•]/g, '').trim().charAt(0) || '?').toUpperCase();
 // Archivos de WhatsApp: etiquetas, vista previa y cómo se dibujan dentro de la conversación
-const NOMBRE_TIPO = { image: 'Imagen', document: 'Documento', audio: 'Audio', video: 'Video', sticker: 'Sticker' };
+const NOMBRE_TIPO = { image: 'Imagen', document: 'Documento', audio: 'Audio', video: 'Video', sticker: 'Sticker', file: 'Archivo', enlace: 'Compartido' };
 const sinTexto = m => m.adjunto ? '' : (NOMBRE_TIPO[m.tipo] ? '[' + NOMBRE_TIPO[m.tipo].toLowerCase() + ' · llegó antes de que el panel guardara archivos]' : '[' + (m.tipo || 'mensaje') + ']');
 const vistaPrevia = c => (c.ult.direccion === 'salida' ? 'Respuesta: ' : '') + (c.ult.texto || (c.ult.adjunto ? (NOMBRE_TIPO[c.ult.adjunto.t] || 'Archivo') + (c.ult.adjunto.n ? ': ' + c.ult.adjunto.n : '') : sinTexto(c.ult)));
 function htmlAdjunto(a) {
+  const icono = d => '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="' + d + '" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  if (a.u) {   // archivo que llegó (o se mandó) por Instagram o Facebook: viene por dirección web
+    const u = esc(a.u);
+    if (a.t === 'image') return '<a class="adj adj-img" href="' + u + '" target="_blank" rel="noopener noreferrer" title="Abrir en grande"><img src="' + u + '" alt="Imagen" loading="lazy" referrerpolicy="no-referrer"></a>';
+    if (a.t === 'video') return '<video class="adj" controls preload="metadata" src="' + u + '"></video>';
+    if (a.t === 'audio') return '<audio class="adj" controls preload="none" src="' + u + '"></audio>';
+    const enlace = a.t === 'enlace';
+    return '<a class="adj adj-doc" href="' + u + '" target="_blank" rel="noopener noreferrer">' + icono(enlace ? 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1' : 'M7 3h7l5 5v13H7zM14 3v5h5') + '<span>' + esc(a.n || (enlace ? 'Contenido compartido' : 'Archivo')) + '</span><small>' + (enlace ? 'Abrir' : 'Descargar') + '</small></a>';
+  }
+  if (!a.id) return '<span class="adj-nota">' + esc(a.n || NOMBRE_TIPO[a.t] || 'Archivo') + ' · no disponible</span>';
   const u = esc('/api/whatsapp-media?id=' + encodeURIComponent(a.id) + (a.n ? '&n=' + encodeURIComponent(a.n) : ''));
   if (a.t === 'image' || a.t === 'sticker') return '<a class="adj adj-img" href="' + u + '" target="_blank" rel="noopener" title="Abrir en grande"><img src="' + u + '" alt="' + (a.t === 'sticker' ? 'Sticker' : 'Imagen enviada') + '" loading="lazy"></a>';
   if (a.t === 'audio') return '<audio class="adj" controls preload="none" src="' + u + '"></audio>';
@@ -972,6 +982,22 @@ const FILTROS_WA = [
   { id: 'agente', texto: 'Respuesta enviada', ayuda: 'Conversaciones a las que el agente ya les mandó su respuesta', pasa: c => c.agenteRespondio },
   { id: 'archivados', texto: 'Archivados', ayuda: 'Ya recibieron el primer mensaje automático y la persona no ha vuelto a escribir. Si escribe, reaparecen en Todos', pasa: c => c.archivada },
 ];
+// Carpetas de la bandeja de Instagram: Todo, Principal, General y Solicitudes (Instagram las separa; la lista sale de su API y se actualiza cada minuto)
+const CARPETAS_IG = [{ id: 'todo', texto: 'Todo' }, { id: 'principal', texto: 'Principal' }, { id: 'general', texto: 'General' }, { id: 'solicitudes', texto: 'Solicitudes' }];
+let carpetaIG = 'todo';
+try { const f = localStorage.getItem('carpeta-instagram'); if (CARPETAS_IG.some(x => x.id === f)) carpetaIG = f; } catch { /* sin almacenamiento */ }
+let carpetasIG = { t: 0, datos: null, error: '', cargando: false };
+async function cargarCarpetasIG(forzar) {
+  if (carpetasIG.cargando || (!forzar && Date.now() - carpetasIG.t < 60000)) return;
+  carpetasIG.cargando = true;
+  try {
+    const r = await fetch('/api/instagram-carpetas'); const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || 'Error ' + r.status);
+    carpetasIG = { t: Date.now(), datos: j, error: '', cargando: false };
+  } catch (e) { carpetasIG = { t: Date.now(), datos: null, error: e.message, cargando: false }; }
+  if (enMensajes() && redMsg === 'instagram') pintarColumnas();
+}
+const enCarpetaIG = (id, c) => id === 'todo' || !!(carpetasIG.datos && (carpetasIG.datos[id] || []).includes(c.ref));
 let filtroWa = 'todos';
 try { const f = localStorage.getItem('filtro-whatsapp'); if (FILTROS_WA.some(x => x.id === f)) filtroWa = f; } catch { /* sin almacenamiento */ }
 function etiquetaRed(lista) {
@@ -997,13 +1023,25 @@ function pintarColumnas() {
     visibles = todas.filter(f.pasa);
     filtros.hidden = false;
     filtros.innerHTML = FILTROS_WA.map(x => '<button type="button" class="filtro-wa ' + (x.id === filtroWa ? 'activo' : '') + '" data-filtro="' + x.id + '" aria-pressed="' + (x.id === filtroWa) + '"' + (x.ayuda ? ' title="' + x.ayuda + '"' : '') + '>' + x.texto + ' <small>' + todas.filter(x.pasa).length + '</small></button>').join('');
+  } else if (redMsg === 'instagram') {
+    cargarCarpetasIG();
+    visibles = todas.filter(c => enCarpetaIG(carpetaIG, c));
+    const d = carpetasIG.datos, errores = (d && d.errores) || {};
+    filtros.hidden = false;
+    filtros.innerHTML = CARPETAS_IG.map(x => '<button type="button" class="filtro-wa filtro-ig ' + (x.id === carpetaIG ? 'activo' : '') + '" data-carpeta="' + x.id + '" aria-pressed="' + (x.id === carpetaIG) + '">' + x.texto + (x.id === 'todo' || d ? ' <small>' + todas.filter(c => enCarpetaIG(x.id, c)).length + '</small>' : '') + '</button>').join('') +
+      (carpetasIG.error ? '<p class="filtros-nota">No pude leer las carpetas de Instagram: ' + esc(carpetasIG.error) + '</p>' : Object.keys(errores).length ? '<p class="filtros-nota">Instagram no devolvió: ' + esc(Object.entries(errores).map(([k, v]) => k + ' (' + v + ')').join('; ')) + '</p>' : '');
   } else { filtros.hidden = true; filtros.innerHTML = ''; }
   const q = busquedaMsg.trim().toLowerCase();
   if (q) visibles = visibles.filter(c => (c.titulo + ' ' + c.telefono + ' ' + c.mensajes.map(m => m.texto).join(' ')).toLowerCase().includes(q));
-  lista.innerHTML = visibles.length ? visibles.map(filaColumna).join('') : '<div class="sin">' + (q ? 'Sin resultados.' : todas.length ? 'Ninguna conversación con este filtro.' : 'Todavía no hay conversaciones.') + '</div>';
+  lista.innerHTML = visibles.length ? visibles.map(filaColumna).join('') : '<div class="sin">' + (q ? 'Sin resultados.' : todas.length ? (redMsg === 'instagram' && carpetaIG !== 'todo' && !carpetasIG.datos ? (carpetasIG.cargando || !carpetasIG.t ? 'Cargando las carpetas de Instagram…' : 'No pude leer esta carpeta.') : 'Ninguna conversación con este filtro.') : 'Todavía no hay conversaciones.') + '</div>';
   lista.scrollTop = scrollLista;
   lista.querySelectorAll('[data-conv]').forEach(b => b.addEventListener('click', () => abrirConversacion(b.dataset.conv)));
-  filtros.querySelectorAll('.filtro-wa').forEach(b => b.addEventListener('click', () => {
+  filtros.querySelectorAll('.filtro-ig').forEach(b => b.addEventListener('click', () => {
+    carpetaIG = b.dataset.carpeta;
+    try { localStorage.setItem('carpeta-instagram', carpetaIG); } catch { /* sin almacenamiento */ }
+    pintarColumnas();
+  }));
+  filtros.querySelectorAll('.filtro-wa[data-filtro]').forEach(b => b.addEventListener('click', () => {
     filtroWa = b.dataset.filtro;
     try { localStorage.setItem('filtro-whatsapp', filtroWa); } catch { /* sin almacenamiento */ }
     pintarColumnas();
@@ -1055,6 +1093,7 @@ function pintarConversacion(desplazar) {
     const url = el.currentSrc || el.src;
     (el.closest('.adj') || el).replaceWith(nota);
     let motivo = '';
+    if (/^https?:/i.test(url) && new URL(url).origin !== location.origin) { nota.textContent = 'No se puede mostrar este archivo. Meta ya no lo conserva (guarda los archivos por un tiempo limitado).'; return; }
     try { const r = await fetch(url); if (!r.ok) { const j = await r.json().catch(() => ({})); motivo = j.error || ('Error ' + r.status); } } catch { motivo = 'Sin conexión con el servidor.'; }   // se pide de nuevo para decir el motivo real
     nota.textContent = 'No se puede mostrar este archivo. ' + (motivo || 'El navegador no pudo leerlo.');
   }, { once: true }));
@@ -1074,7 +1113,7 @@ function cajaRespuesta(c) {
   return `<div class="resp">
     <div class="resp-adj" hidden></div>
     <div class="resp-caja">
-      <div class="resp-clip-zona"${c.red === 'whatsapp' ? '' : ' hidden'}>
+      <div class="resp-clip-zona">
         <button type="button" class="resp-clip" aria-label="Adjuntar" aria-haspopup="menu" aria-expanded="false" title="Adjuntar">${ic('M20 11.5 12.2 19.3a5 5 0 0 1-7-7l8-8a3.3 3.3 0 0 1 4.7 4.7l-8 8a1.7 1.7 0 0 1-2.4-2.4l7.3-7.3')}</button>
         <div class="resp-menu" role="menu" hidden>
           <button type="button" role="menuitem" data-tipo="imagen">${ic('M4 6h16v12H4zM4 15l4.5-4.5 3.5 3.5 2.5-2.5L20 16M9 9.5h.01')}<span>Foto o video</span></button>
@@ -1086,7 +1125,7 @@ function cajaRespuesta(c) {
       <button type="button" class="resp-enviar" aria-label="Enviar" title="Enviar (Enter)"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 19V6M6 11.5 12 5.5l6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
     <input type="file" class="resp-archivo" hidden>
-    <div class="resp-pie"><span class="resp-error" role="alert"></span><small class="resp-ayuda">Enter envía · Mayús + Enter salto de línea · ${c.red === 'whatsapp' ? 'también puedes pegar o arrastrar archivos' : 'solo texto por ' + redNombre}</small></div>
+    <div class="resp-pie"><span class="resp-error" role="alert"></span><small class="resp-ayuda">Enter envía · Mayús + Enter salto de línea · ${c.red === 'whatsapp' ? 'también puedes pegar o arrastrar archivos' : c.red === 'instagram' ? 'también puedes pegar o arrastrar fotos y videos (hasta 4 MB); para un reel, pega su enlace' : 'también puedes pegar o arrastrar fotos, videos y documentos (hasta 4 MB)'}</small></div>
   </div>`;
 }
 // ---- archivos para enviar (hasta 4 MB: es lo que recibe el servidor en línea) ----
@@ -1139,6 +1178,7 @@ function activarRespuesta(c, borrador, teniaFoco) {
   const texto = caja.querySelector('.resp-texto'), enviar = caja.querySelector('.resp-enviar'), error = caja.querySelector('.resp-error');
   const barra = caja.querySelector('.resp-adj'), clip = caja.querySelector('.resp-clip'), menu = caja.querySelector('.resp-menu'), entrada = caja.querySelector('.resp-archivo');
   texto.value = borrador;
+  if (c.red !== 'whatsapp') { const quitar = t => { const b = menu.querySelector('[data-tipo="' + t + '"]'); if (b) b.remove(); }; quitar('sticker'); if (c.red === 'instagram') quitar('documento'); }   // por Instagram y Facebook no hay stickers; Instagram tampoco acepta documentos
   const ajustarAlto = () => { texto.style.height = 'auto'; texto.style.height = Math.min(texto.scrollHeight, 120) + 'px'; };
   ajustarAlto();
   if (teniaFoco || enfocarRespuesta) { texto.focus(); enfocarRespuesta = false; }
@@ -1155,7 +1195,7 @@ function activarRespuesta(c, borrador, teniaFoco) {
   const ocupado = si => { enviando = si; texto.readOnly = si; enviar.disabled = si; clip.disabled = si; caja.classList.toggle('enviando', si); };
   async function elegir(archivo, tipo) {
     error.textContent = '';
-    if (c.red !== 'whatsapp') { error.textContent = 'Por ' + RED_MSG[c.red].nombre + ' solo se puede mandar texto.'; return; }
+    if (c.red !== 'whatsapp' && (tipo === 'sticker' || (tipo === 'documento' && c.red === 'instagram'))) { error.textContent = tipo === 'sticker' ? 'Los stickers solo se pueden mandar por WhatsApp.' : 'Instagram no permite mandar documentos. Manda una foto o un video.'; return; }
     try {
       const v = await validarArchivo(archivo, tipo);
       if (adjuntoPend && adjuntoPend.vista) URL.revokeObjectURL(adjuntoPend.vista);
@@ -1182,7 +1222,7 @@ function activarRespuesta(c, borrador, teniaFoco) {
       let r, j;
       if (adjuntoPend) {
         const a = adjuntoPend;
-        r = await fetch('/api/enviar-archivo?ref=' + encodeURIComponent(c.ref) + '&tipo=' + a.tipo + '&nombre=' + encodeURIComponent(a.nombre) + '&pie=' + encodeURIComponent(a.tipo === 'sticker' ? '' : texto.value.trim()), { method: 'POST', headers: { 'Content-Type': a.mime, 'x-panel': '1' }, body: a.blob });
+        r = await fetch('/api/enviar-archivo?ref=' + encodeURIComponent(c.ref) + '&tipo=' + a.tipo + '&nombre=' + encodeURIComponent(a.nombre) + '&pie=' + encodeURIComponent(a.tipo === 'sticker' ? '' : texto.value.trim()) + '&red=' + encodeURIComponent(c.red), { method: 'POST', headers: { 'Content-Type': a.mime, 'x-panel': '1' }, body: a.blob });
       } else {
         r = await fetch('/api/responder', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-panel': '1' }, body: JSON.stringify({ ref: c.ref, texto: texto.value, red: c.red }) });
       }
