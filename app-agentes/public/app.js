@@ -961,7 +961,9 @@ function filaContacto(c) {
 }
 function filaColumna(c) {
   const etqs = c.red === 'whatsapp' ? (c.archivada && filtroWa !== 'archivados' ? '<i class="mini-etq">Archivado</i>' : '') + (c.delAnuncio ? '<i class="mini-etq">Anuncio</i>' : '') + (c.agenteRespondio ? '<i class="mini-etq ok">Respuesta del agente</i>' : '') : '';
-  return filaContacto(c).replace('</button>', (etqs ? '<span class="mini-etqs">' + etqs + '</span>' : '') + '</button>').replace('class="ct ', 'class="ct ' + (etqs ? 'con-etq ' : ''));
+  const cuando = hace(c.ult.fecha), tiempo = cuando ? '<time class="mini-hace" datetime="' + esc(c.ult.fecha) + '" title="Tiempo desde el último mensaje">' + esc(cuando) + '</time>' : '';
+  const fila = etqs || tiempo;
+  return filaContacto(c).replace('</button>', (fila ? '<span class="mini-etqs">' + etqs + tiempo + '</span>' : '') + '</button>').replace('class="ct ', 'class="ct ' + (fila ? 'con-etq ' : ''));
 }
 // Filtro de la columna de WhatsApp: todos, solo los que llegaron de un anuncio, o los que ya contestó el agente
 const FILTROS_WA = [
